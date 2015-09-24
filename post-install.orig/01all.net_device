@@ -1,0 +1,13 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+#. /tmp/post-install/local_variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+#cd /etc/init.d
+#ln -s net.lo net.${DEVICE}
+
+#/sbin/rc-update add net.${DEVICE} default
+
+

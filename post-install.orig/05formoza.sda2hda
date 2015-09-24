@@ -1,0 +1,11 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+#. /tmp/post-install/local_variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Hack for 2.6.22 kernel
+#sed -i -e "s:sda:hda:g" /etc/fstab
+#sed -i -e "s:sda:hda:g" /boot/grub/grub.conf
+

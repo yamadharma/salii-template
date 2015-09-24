@@ -1,0 +1,24 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+echo "sed /netinst/unattend.txt"
+sed -e "s:@HOSTNAME@:$HOSTNAME:g" /netinst/unattend.txt > /netinst/unattend.tmp
+cp -f /netinst/unattend.tmp /netinst/unattend.txt
+rm /netinst/unattend.tmp
+
+echo "sed /netinst/sysprep.inf"
+sed -e "s:@HOSTNAME@:$HOSTNAME:g" /netinst/sysprep.inf > /netinst/sysprep.tmp
+cp -f /netinst/sysprep.tmp /netinst/sysprep.inf
+rm /netinst/sysprep.tmp
+
+echo "config /netinst/unattend.txt"
+cd /netinst
+. /scripts/unattend.sh
+
+cp /netinst/sysprep.inf /sysprep/
+
+cd /
+

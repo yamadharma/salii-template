@@ -1,0 +1,44 @@
+# Unattend prepare
+
+winxp_unattend_prepare() {
+
+echo "sed /a/netinst/unattend.txt"
+sed -e "s:@HOSTNAME@:$HOSTNAME:g" /a/netinst/unattend.txt > /a/netinst/unattend.tmp || shellout
+cp -f /a/netinst/unattend.tmp /a/netinst/unattend.txt || shellout
+rm /a/netinst/unattend.tmp || shellout
+
+echo "sed /a/netinst/sysprep.inf"
+sed -e "s:@HOSTNAME@:$HOSTNAME:g" /a/netinst/sysprep.inf > /a/netinst/sysprep.tmp || shellout
+cp -f /a/netinst/sysprep.tmp /a/netinst/sysprep.inf || shellout
+rm /a/netinst/sysprep.tmp || shellout
+
+echo "config /netinst/unattend.txt"
+cd /a/netinst
+. /scripts/unattend.sh
+
+cp /a/netinst/sysprep.inf /a/sysprep/
+
+cd /
+
+}
+
+save_and_clean_mbr ()
+{
+    dd if=${DISK0} of=/a/netinst/mbr.img count=1 bs=512 || shellout
+    /a/ms-sys -m ${DISK0} || shellout
+}
+
+create_filesystem_win(){
+
+    echo "Creating partition ${DISK0}1:"
+
+#    echo "parted -s -- ${DISK0} set 1 boot on || shellout"
+#    parted -s -- ${DISK0} set 1 boot on || shellout
+#    parted -s -- ${DISK0} mkfs 1 fat32 || shellout
+
+    echo "mkdosfs -F 32 ${DISK0}1 || shellout"
+    /scripts/bin/mkdosfs -F 32 ${DISK0}1 || shellout
+    # parted -s -- ${DISK0} resize 1
+}
+
+

@@ -1,0 +1,15 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+#. /tmp/post-install/local_variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+for i in /etc/X11/xorg.conf.in/*
+do
+    cat $i >> /etc/X11/xorg.conf
+done
+
+eselect opengl set xorg-x11
+
+ 

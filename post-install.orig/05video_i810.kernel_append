@@ -1,0 +1,10 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+#. /tmp/post-install/local_variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# sed -i -e "s/@KERNEL_APPEND@/video=uvesafb:1024x768-32@75,mtrr:3,ywrap @KERNEL_APPEND@/g" /boot/grub/grub.conf
+
+

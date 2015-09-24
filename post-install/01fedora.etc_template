@@ -1,0 +1,13 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+sed -i -e "s:@HOSTNAME@:$HOSTNAME:g" /etc/sysconfig/network
+
+# AFS cache size
+# export AFS_CACHE_SIZE=$(echo "scale=0; (($DISK_SIZE2 * 910 * 1000 / 1000))" | bc)
+export AFS_CACHE_SIZE=$(echo "scale=0; (($DISK_SIZE2 * 910))" | bc)
+sed -i -e "s:@AFS_CACHE_SIZE@:$AFS_CACHE_SIZE:g" /etc/openafs/cacheinfo
+

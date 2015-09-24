@@ -1,0 +1,724 @@
+#!/bin/sh
+#
+# SARA install script for LISA nodes: 
+# Initial Authors: Bas van der Vlies and Jaap Dijkshoorn
+#
+# SVN Info:
+#	$Id: masterscript.old 235 2010-08-23 09:12:15Z dennis $
+
+# This master autoinstall script was created with SystemImager v3.7.6
+
+# Pull in variables left behind by the linuxrc script.
+# This information is passed from the linuxrc script on the autoinstall media 
+# via /tmp/variables.txt.  Apparently the shell we use in BOEL is not 
+# intelligent enough to take a "set -a" parameter.
+#
+#set -x
+
+. /tmp/variables.txt
+
+# Load functions and other variables
+. /etc/init.d/functions
+
+get_arch
+
+NO_LISTING=yes
+if [ -z $NO_LISTING ]; then
+    VERBOSE_OPT="v"
+else
+    VERBOSE_OPT=""
+fi
+
+# Remove .master from script name
+#
+SARA_SCRIPT=`echo $0 | cut -d. -f1`
+
+echo $0
+echo $IMAGENAME
+
+[ -z $IMAGENAME ] && IMAGENAME=`basename $SARA_SCRIPT`
+[ -z $OVERRIDES ] && OVERRIDES=`basename $SARA_SCRIPT`
+
+echo $IMAGENAME
+
+### BEGIN Check to be sure this not run from a working machine ###
+# Test for mounted SCSI or IDE disks
+mount | grep [hs]d[a-z][1-9] > /dev/null 2>&1
+[ $? -eq 0 ] &&  logmsg Sorry.  Must not run on a working machine... && shellout
+
+# Test for mounted software RAID devices
+mount | grep md[0-9] > /dev/null 2>&1
+[ $? -eq 0 ] &&  logmsg Sorry.  Must not run on a working machine... && shellout
+
+# Test for mounted hardware RAID disks
+mount | grep c[0-9]+d[0-9]+p > /dev/null 2>&1
+[ $? -eq 0 ] &&  logmsg Sorry.  Must not run on a working machine... && shellout
+### END Check to be sure this not run from a working machine ###
+
+
+################################################################################
+#
+#   Stop RAID devices before partitioning begins
+#
+# Q1) Why did they get started in the first place?  
+# A1) So we can pull a local.cfg file off a root mounted software RAID system.
+#     They may not be started on your system -- they would only be started if
+#     you did the stuff in Q3 below.
+#
+# Q2) Why didn't my local.cfg on my root mounted software RAID work for me 
+#     with the standard kernel flavour?
+# A2) The standard kernel flavour uses modules for the software RAID drivers --
+#     therefore, software RAID is not available at the point in the boot process
+#     where BOEL needs to read the local.cfg file.  They are only pulled over 
+#     when this script is run, which is, of course, only runnable if it was
+#     pulled over the network using the settings that you would have wanted it
+#     to get from the local.cfg file, which it couldn't.  Right?
+#
+# Q3) Whatever.  So how do I make it work with a local.cfg file on my root
+#     mounted software RAID?  
+# A3) Compile an autoinstall kernel with software RAID, and any other drivers 
+#     you might need built in (filesystem, SCSI drivers, etc.).
+#
+if [ -f /proc/mdstat ]; then
+  RAID_DEVICES=` cat /proc/mdstat | grep ^md | sed 's/ .*$//g' `
+
+  # Turn dem pesky raid devices off!
+  for RAID_DEVICE in ${RAID_DEVICES}
+  do
+    DEV="/dev/${RAID_DEVICE}"
+    logmsg "mdadm --manage ${DEV} --stop"
+    mdadm --manage ${DEV} --stop
+  done
+fi
+#
+################################################################################
+# BEGIN disk enumeration
+#
+# Note the kludgey way to get /dev/sd* and /dev/*/c*d* to sort properly...
+#
+# Parse the correct file depending by the kernel release -AR-
+kernel=`uname -r | sed "s/^\(2\.[64]\).*/\1/"`
+if [ $kernel = "2.4" ]; then
+    diskfile=/proc/partitions
+else
+    diskfile=/proc/diskstats
+fi 
+
+DISK0=""
+DISK1=""
+DISKORDER=sd,hd
+[ -z $DISKORDER ] || {
+  logmsg enumerate_disks
+  order=`echo "$DISKORDER" | sed 's/ /,/g' | sed s/,,*/,/g | sed s/^,//`
+  DISKS=0
+  cdroms=`cat /proc/sys/dev/cdrom/info 2>/dev/null | sed -ne "s/^drive name:[[:space:]]*//p"`
+  while : ; do
+    [ -z $order ] && break
+    type=`expr $order : '\([^,]*\),' \| $order`
+    case $type in
+    cciss | ida | rd )
+      for dev in `cat $diskfile | sed -ne "s/.*\($type\\/c[0-9]d[0-9]\).*/\1/p" | sort -u` ; do
+        logmsg " $dev"
+        eval DISK$DISKS=/dev/${dev}
+        DISKS=`expr $DISKS + 1`
+      done
+      ;;
+    hd | sd )
+      for dev in `cat $diskfile | sed -ne "s/.*\($type[a-z]\+\).*/\1/p" | sort -u` ; do
+        skip=0
+        for cdrom in $cdroms; do
+            if [ "$dev" = "$cdrom" ]; then
+                skip=1
+                break
+            fi
+        done
+
+	# QLA driver is loaded before the scsi driver BvdV
+	#
+	case $dev in
+		sda)
+			# If the qla driver is loaded skip this device BvdV
+			# 
+			qla=`lsmod | grep -c qla`
+			if [ $qla -eq 1 ]
+			then
+				skip=1
+			else
+				skip=0
+			fi	
+		;;
+	esac
+
+        if [ $skip -eq 0 ]; then
+            logmsg " $dev"
+            eval DISK$DISKS=/dev/${dev}
+            DISKS=`expr $DISKS + 1`
+        fi
+      done
+      ;;
+    * )
+      logmsg "type='$type'"
+      shellout
+      ;;
+    esac
+    order=`expr $order : '[^,]*,\(.*\)'`
+  done
+  logmsg DISKS=$DISKS
+  [ $DISKS -eq 0 ] && {
+    beep
+    beep
+    logmsg ""
+    logmsg "NO DISK DEVICE FILES WERE FOUND.  THIS USUALLY MEANS THE KERNEL DID NOT"
+    logmsg "RECOGNIZE ANY OF THE ATTACHED DISKS."
+    logmsg ""
+    logmsg "The kernel boot messages, which preceded this, may indicate why."
+    logmsg ""
+    logmsg "Reverting to disk configuration specified by image master script."
+    DISKORDER=
+    logmsg ""
+  }
+  echo
+  beep
+}
+#
+# END disk enumeration
+################################################################################
+
+### BEGIN partition $DISK0 ###
+logmsg "Partitioning $DISK0..."
+logmsg "Old partition table for $DISK0:"
+parted -s -- $DISK0 print
+
+# Wipe the MBR (Master Boot Record) clean.
+logmsg "dd if=/dev/zero of=$DISK0 bs=512 count=1 || shellout"
+dd if=/dev/zero of=$DISK0 bs=512 count=1 || shellout
+
+# Re-read the disk label.
+logmsg "blockdev --rereadpt $DISK0"
+blockdev --rereadpt $DISK0
+
+# Create disk label.  This ensures that all remnants of the old label, whatever
+# type it was, are removed and that we're starting with a clean label.
+logmsg "parted -s -- $DISK0 mklabel msdos || shellout"
+parted -s -- $DISK0 mklabel msdos || shellout
+
+# Get the size of the destination disk so that we can make the partitions fit properly.
+DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/MB//' `
+[ -z $DISK_SIZE ] && shellout
+if [ "$ARCH" = "alpha" ]; then
+    END_OF_LAST_PRIMARY=1
+else
+    END_OF_LAST_PRIMARY=0
+fi
+
+
+logmsg "Creating partition ${DISK0}1."
+START_MB=$END_OF_LAST_PRIMARY
+END_MB=$(echo "scale=3; ($START_MB + 976)" | bc)
+logmsg "parted -s -- $DISK0 mkpart primary $START_MB $END_MB || shellout"
+parted -s -- $DISK0 mkpart primary $START_MB $END_MB || shellout
+END_OF_LAST_PRIMARY=$END_MB
+
+logmsg "Creating partition ${DISK0}2."
+START_MB=$END_OF_LAST_PRIMARY
+END_MB=$(echo "scale=3; ($START_MB + 8192)" | bc)
+logmsg "parted -s -- $DISK0 mkpart primary $START_MB $END_MB || shellout"
+parted -s -- $DISK0 mkpart primary $START_MB $END_MB || shellout
+END_OF_LAST_PRIMARY=$END_MB
+
+logmsg "Creating partition ${DISK0}3."
+START_MB=$END_OF_LAST_PRIMARY
+END_MB=$(echo "scale=3; ($START_MB + 4096)" | bc)
+logmsg "parted -s -- $DISK0 mkpart primary linux-swap $START_MB $END_MB || shellout"
+parted -s -- $DISK0 mkpart primary linux-swap $START_MB $END_MB || shellout
+END_OF_LAST_PRIMARY=$END_MB
+
+logmsg "Creating partition ${DISK0}4."
+START_MB=$END_OF_LAST_PRIMARY
+END_MB=$(( $DISK_SIZE - 0 ))
+logmsg "parted -s -- $DISK0 mkpart primary $START_MB $END_MB || shellout"
+parted -s -- $DISK0 mkpart primary $START_MB $END_MB || shellout
+END_OF_LAST_PRIMARY=$END_MB
+
+logmsg "New partition table for $DISK0:"
+logmsg "parted -s -- $DISK0 print"
+parted -s -- $DISK0 print
+### END partition $DISK0 ###
+
+### BEGIN partition $DISK1 ###
+if [ ! -z $DISK1 ]
+then
+	logmsg "Partitioning $DISK1..."
+	logmsg "Old partition table for $DISK1:"
+	parted -s -- $DISK1 print
+
+	# Wipe the MBR (Master Boot Record) clean.
+	logmsg "dd if=/dev/zero of=$DISK1 bs=512 count=1 || shellout"
+	dd if=/dev/zero of=$DISK1 bs=512 count=1 || shellout
+
+	# Re-read the disk label.
+	logmsg "blockdev --rereadpt $DISK1"
+	blockdev --rereadpt $DISK1
+
+	# Create disk label.  This ensures that all remnants of the old label, whatever
+	# type it was, are removed and that we're starting with a clean label.
+	logmsg "parted -s -- $DISK1 mklabel msdos || shellout"
+	parted -s -- $DISK1 mklabel msdos || shellout
+
+	# Get the size of the destination disk so that we can make the partitions fit properly.
+	DISK_SIZE=`parted -s $DISK1 unit MB print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/MB//' `
+	[ -z $DISK_SIZE ] && shellout
+	if [ "$ARCH" = "alpha" ]; then
+	    END_OF_LAST_PRIMARY=1
+	else
+	    END_OF_LAST_PRIMARY=0
+	fi
+
+
+	logmsg "Creating partition ${DISK1}1."
+	START_MB=$END_OF_LAST_PRIMARY
+	END_MB=$(( $DISK_SIZE - 0 ))
+	logmsg "parted -s -- $DISK1 mkpart primary $START_MB $END_MB || shellout"
+	parted -s -- $DISK1 mkpart primary $START_MB $END_MB || shellout
+	END_OF_LAST_PRIMARY=$END_MB
+
+	logmsg "New partition table for $DISK1:"
+	logmsg "parted -s -- $DISK1 print"
+	parted -s -- $DISK1 print
+fi
+### END partition $DISK1 ###
+
+
+### BEGIN software-RAID initialization commands -AR- ###
+logmsg "Load software RAID modules."
+modprobe linear
+modprobe raid0
+modprobe raid1
+modprobe raid5
+modprobe raid6
+modprobe raid10
+### END software-RAID initialization commands ###
+
+logmsg "Load device mapper driver (for LVM)."
+modprobe dm-mod
+
+### BEGIN LVM initialization commands -AR- ###
+### END LVM initialization commands ###
+
+### BEGIN LVM groups creation commands -AR- ###
+### END LVM groups creation commands ###
+
+### BEGIN LVM volumes creation commands -AR- ###
+### END LVM volumes creation commands ###
+
+logmsg "Load additional filesystem drivers."
+modprobe ext2
+modprobe ext3
+modprobe fat
+modprobe jfs
+modprobe reiserfs
+modprobe vfat
+modprobe xfs
+
+### BEGIN swap and filesystem creation commands ###
+
+logmsg "mkfs.xfs -f -q ${DISK0}4 || shellout"
+mkfs.xfs -f -q ${DISK0}4 || shellout
+logmsg "xfs_db -x -c 'label root' ${DISK0}4 || shellout"
+xfs_db -x -c 'label root' ${DISK0}4 || shellout
+logmsg "mkdir -p /a || shellout"
+mkdir -p /a || shellout
+logmsg "mount ${DISK0}4 /a -t xfs -o rw || shellout"
+mount ${DISK0}4 /a -t xfs -o rw || shellout
+
+# Added the blocksize of 128, by default the new e2fsprogs format the disk
+# with a Inode blocksize of 256. Grub 0.97 does not support this, only 128.
+logmsg "mke2fs -I 128 -q ${DISK0}1 || shellout"
+mke2fs -q ${DISK0}1 || shellout
+logmsg "tune2fs -L boot ${DISK0}1 || shellout"`
+tune2fs -L boot ${DISK0}1 || shellout"`
+logmsg "mkdir -p /a/boot || shellout"
+mkdir -p /a/boot || shellout
+logmsg "mount ${DISK0}1 /a/boot -t ext2 -o rw || shellout"
+mount ${DISK0}1 /a/boot -t ext2 -o rw || shellout
+
+logmsg "mkfs.xfs -f -q ${DISK0}2 || shellout"
+mkfs.xfs -f -q ${DISK0}2 || shellout
+logmsg "xfs_db -x -c 'label var' ${DISK0}2 || shellout"
+xfs_db -x -c 'label var' ${DISK0}2 || shellout
+logmsg "mkdir -p /a/var || shellout"
+mkdir -p /a/var || shellout
+logmsg "mount ${DISK0}2 /a/var -t xfs -o rw || shellout"
+mount ${DISK0}2 /a/var -t xfs -o rw || shellout
+
+echo "mkswap -L swap ${DISK0}3 || shellout"
+mkswap -L swap ${DISK0}3 || shellout
+
+if [ ! -z $DISK1 ]
+then
+	logmsg "mkfs.xfs -f -q ${DISK1}1 || shellout"
+	mkfs.xfs -f -q ${DISK1}1 || shellout
+	logmsg "xfs_db -x -c 'label scratch' ${DISK1}1 || shellout"
+	xfs_db -x -c 'label scratch' ${DISK1}1 || shellout
+	logmsg "mkdir -p /a/scratch || shellout"
+	mkdir -p /a/scratch || shellout
+	logmsg "mount ${DISK1}1 /a/scratch -t xfs -o rw || shellout"
+	mount ${DISK1}1 /a/scratch -t xfs -o rw || shellout
+fi
+
+
+### END swap and filesystem creation commands ###
+
+### BEGIN mount proc in image for tools like System Configurator ###
+logmsg "mkdir -p /a/proc || shellout"
+mkdir -p /a/proc || shellout
+logmsg "mount proc /a/proc -t proc -o defaults || shellout"
+mount proc /a/proc -t proc -o defaults || shellout
+### END mount proc in image for tools like System Configurator ###
+
+if [ ! $kernel = "2.4" ]; then
+### BEGIN mount sysfs in image for tools that might be run during chroot ###
+logmsg "mkdir -p /a/sys || shellout"
+mkdir -p /a/sys || shellout
+logmsg "mount sysfs /a/sys -t sysfs -o defaults || shellout"
+mount sysfs /a/sys -t sysfs -o defaults || shellout
+### END mount sysfs in image for tools that might be run during chroot ###
+fi
+
+################################################################################
+#
+#   Lay the image down on the freshly formatted disk(s)
+#
+if [ ! -z $MONITOR_SERVER ]; then
+    start_report_task
+fi
+
+if [ ! -z $FLAMETHROWER_DIRECTORY_PORTBASE ]; then 
+
+    # Use multicast 
+    MODULE_NAME="${IMAGENAME}"
+    DIR=/a
+    RETRY=7
+    FLAMETHROWER_TARPIPE=y
+    flamethrower_client
+    if [ ! -z $MONITOR_SERVER ]; then
+        stop_report_task 101
+    fi
+elif [ "x$BITTORRENT" = "xy" ]; then
+    # Use BitTorrent
+    if [ -f "${TORRENTS_DIR}/image-${IMAGENAME}.tar.gz.torrent" ]; then
+        bittorrent_tarball="image-${IMAGENAME}.tar.gz"
+        compress='z'
+    elif [ -f "${TORRENTS_DIR}/image-${IMAGENAME}.tar.torrent" ]; then
+        bittorrent_tarball="image-${IMAGENAME}.tar"
+        compress=''
+    else
+        logmsg "error: cannot find a valid torrent file for the image ${IMAGENAME}"
+        shellout
+    fi
+    # Evaluate the staging directory
+    if [ -z $BITTORRENT_STAGING ]; then
+        logmsg bittorrent_autodetect_staging_dir
+        BITTORRENT_STAGING=`bittorrent_autodetect_staging_dir ${TORRENTS_DIR}/${bittorrent_tarball}.torrent`
+        if [ -z $BITTORRENT_STAGING ]; then
+            logmsg ""
+            logmsg "error: cannot find a staging directory to save file: $bittorrent_tarball"
+            logmsg "Try to increase the size of a partition (like /tmp) in your patitioning schema"
+            logmsg "to fit the image into a staging directory."
+            logmsg ""
+            shellout
+        fi
+        logmsg "--> staging in: $BITTORRENT_STAGING"
+    fi
+
+    # Download image from peers
+    logmsg "Start downloading image using torrent ${bittorrent_tarball}.torrent"
+    logmsg ""
+    logmsg "--> INFO: remember to start /etc/init.d/systemimager-server-bittorrent on the image server!"
+    logmsg ""
+    bittorrent_get_file ${TORRENTS_DIR}/${bittorrent_tarball}.torrent ${BITTORRENT_STAGING}
+    if [ ! -z $MONITOR_SERVER ]; then
+        stop_report_task 101
+    fi
+    # Extract image.
+    logmsg "Extracting image from ${bittorrent_tarball} ..."
+    (cd /a/ && tar -x${VERBOSE_OPT}${compress}Spf ${BITTORRENT_STAGING}/${bittorrent_tarball} > /dev/console) || shellout
+
+    # Stop BitTorrent client.
+    bittorrent_stop
+    rm -f ${BITTORRENT_STAGING}/${bittorrent_tarball}
+    unset bittorrent_tarball
+else 
+    # Use rsync 
+    if [ $NO_LISTING ]; then
+        logmsg "Quietly installing image... "
+        start_spinner
+    fi
+    if [ "${TMPFS_STAGING}" = "yes" ]; then 
+
+        # Deposit image into tmpfs
+        DIR=/tmp/tmpfs_staging
+        logmsg
+        logmsg "TMPFS_STAGING=${TMPFS_STAGING} -- Staging in ${DIR}"
+        mkdir -p ${DIR}
+
+        logmsg "rsync -aHS${VERBOSE_OPT} --exclude=lost+found/ --numeric-ids ${IMAGESERVER}::${IMAGENAME}/ ${DIR}/" 
+        rsync -aHS${VERBOSE_OPT} --exclude=lost+found/ --exclude=/proc/* --numeric-ids \
+              ${IMAGESERVER}::${IMAGENAME}/ ${DIR}/ > /dev/console || shellout 
+
+        if [ ! -z $MONITOR_SERVER ]; then
+            stop_report_task 101
+        fi
+
+        # Move from staging in tmpfs to disk
+        rsync -aHS${VERBOSE_OPT} --exclude=lost+found/ --numeric-ids ${DIR}/ /a/ > /dev/console || shellout
+    else
+        logmsg "rsync -aHS${VERBOSE_OPT} --exclude=lost+found/ --exclude=/proc/* --numeric-ids ${IMAGESERVER}::${IMAGENAME}/ /a/" 
+        rsync -aHS${VERBOSE_OPT} --exclude=lost+found/ --exclude=/proc/* --numeric-ids ${IMAGESERVER}::${IMAGENAME}/ /a/ > /dev/console || shellout 
+        if [ ! -z $MONITOR_SERVER ]; then
+            stop_report_task 101
+        fi
+    fi
+fi 
+
+beep
+
+#
+################################################################################
+
+
+if [ $NO_LISTING ]; then
+    stop_spinner
+fi
+
+# Leave notice of which image is installed on the client
+echo $IMAGENAME > /a/etc/systemimager/IMAGE_LAST_SYNCED_TO || shellout
+
+################################################################################
+#
+#   Process override directories
+#
+for OVERRIDE in $OVERRIDES
+do
+    if [ ! -z $FLAMETHROWER_DIRECTORY_PORTBASE ]; then
+        # Use multicast
+        MODULE_NAME="override_${OVERRIDE}"
+        DIR=/a
+        RETRY=7
+        FLAMETHROWER_TARPIPE=y
+        flamethrower_client
+    elif [ "x$BITTORRENT" = "xy" ]; then
+        # Use BitTorrent
+        if [ -f "${TORRENTS_DIR}/override-${OVERRIDE}.tar.gz.torrent" ]; then
+            bittorrent_tarball="override-${OVERRIDE}.tar.gz"
+            compress='z'
+        elif [ -f "${TORRENTS_DIR}/override-${OVERRIDE}.tar.torrent" ]; then
+            bittorrent_tarball="override-${OVERRIDE}.tar"
+            compress=''
+        else
+            bittorrent_tarball=""
+            logmsg "warning: cannot find a valid torrent file for override ${OVERRIDE}"
+        fi
+        # Evaluate the staging directory
+        if [ ! -z $bittorrent_tarball ] && [ -z $BITTORRENT_STAGING ]; then
+            logmsg bittorrent_autodetect_staging_dir
+            BITTORRENT_STAGING=`bittorrent_autodetect_staging_dir ${TORRENTS_DIR}/${bittorrent_tarball}.torrent`
+            if [ -z $BITTORRENT_STAGING ]; then
+                logmsg "warning: cannot find a staging directory to save file: $bittorrent_tarball"
+                bittorrent_tarball=""
+            fi
+            logmsg "--> staging in: $BITTORRENT_STAGING"
+        fi
+        if [ ! -z $bittorrent_tarball ]; then
+            # Start downloading
+            logmsg "Start downloading override using torrent ${bittorrent_tarball}.torrent"
+            logmsg ""
+            logmsg "--> INFO: remember to start /etc/init.d/systemimager-server-bittorrent on the image server!"
+            logmsg ""
+            # Download override from peers
+            bittorrent_get_file ${TORRENTS_DIR}/${bittorrent_tarball}.torrent ${BITTORRENT_STAGING}
+            # Extract override.
+            logmsg "Extracting override from ${bittorrent_tarball} ..."
+            (cd /a/ && tar -x${VERBOSE_OPT}${compress}Spf ${BITTORRENT_STAGING}/${bittorrent_tarball} > /dev/console) || shellout
+            # Stop BitTorrent client.
+            bittorrent_stop
+            rm -f ${BITTORRENT_STAGING}/${bittorrent_tarball}
+        else
+            # Use rsync
+            logmsg "trying to download override ${OVERRIDE} with rsync..."
+            logmsg "rsync -av --numeric-ids $IMAGESERVER::overrides/$OVERRIDE/ /a/"
+            rsync -av --numeric-ids $IMAGESERVER::overrides/$OVERRIDE/ /a/ > /dev/console || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+        fi
+        unset bittorrent_tarball
+    else
+        # Use rsync
+        logmsg "rsync -av --numeric-ids $IMAGESERVER::overrides/$OVERRIDE/ /a/"
+        rsync -av --numeric-ids $IMAGESERVER::overrides/$OVERRIDE/ /a/ > /dev/console || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+    fi
+done
+
+beep
+
+#
+################################################################################
+
+################################################################################
+# BEGIN disk edits
+#
+[ -z $DISKORDER ] || {
+  echo "Editing files for actual disk configuration..."
+  echo " /dev/sda -> $DISK0"
+  echo " /dev/sdb -> $DISK1"
+  for file in /etc/fstab /etc/systemconfig/systemconfig.conf /boot/grub/menu.lst /etc/lilo.conf /etc/grub.conf; do
+    [ -f /a/$file ] || continue
+    echo " $file"
+    cp /a/$file /a/$file.image
+    cat /a/$file.image |
+    sed s:/dev/sdb:%DISK1%:g |
+    sed s:/dev/sda:%DISK0%:g |
+    sed s:%DISK0%:$DISK0:g |
+    sed s:%DISK1%:$DISK1:g |
+    cat > /a/$file
+  done
+  echo
+  beep
+}
+#
+# END disk edits
+################################################################################
+
+
+##################################################################
+#
+# Uncomment the line below to leave your hostname blank.
+# Certain distributions use this as an indication to take on the
+# hostname provided by a DHCP server.  The default is to have
+# SystemConfigurator assign your clients the hostname that
+# corresponds to the IP address the use during the install.
+# (If you used to use the static_dhcp option, this is your man.)
+#
+#HOSTNAME=""
+
+
+################################################################################
+#
+# mount /dev /a/dev -o bind if needed
+#
+logmsg "mount /dev /a/dev -o bind || shellout"
+mount /dev /a/dev -o bind || shellout
+#
+################################################################################
+
+
+################################################################################
+#
+#   Detect scsi hardware and include the device IDs into the hardware.lst
+#   file used by systemconfigurator. Do nothing if the hardware.lst file
+#   already exists (which is a sign that it has been already prepared).
+#   Would be shorter if discover could return numerical device IDs...
+#
+if [ ! -f /a/etc/systemconfig/hardware.lst ]; then
+   [ ! -d /a/etc/systemconfig ] && mkdir -p /a/etc/systemconfig
+   SCSI_MODS=`discover -f "%m\n" scsi | grep -v ide-scsi | uniq`
+   for MOD in $SCSI_MODS; do
+      DEVID=`grep $MOD /proc/bus/pci/devices | cut -f 2 | sort | uniq`
+      for MYDEV in $DEVID; do
+         VENDOR=`echo $MYDEV | cut -b 1-4`
+         MODEL=`echo $MYDEV | cut -b 5-8`
+         echo "$VENDOR $MODEL scsi $MOD" >> /a/etc/systemconfig/hardware.lst
+         echo "Added SCSI device $VENDOR:$MODEL using module $MOD to hardware.lst"
+      done
+   done
+fi
+#
+################################################################################
+
+
+################################################################################
+#
+#   Post Install Scripts
+#
+run_post_install_scripts
+#
+################################################################################
+
+################################################################################
+#
+#   Save virtual console session in the imaged client
+#
+if [ ! -z $MONITOR_SERVER ]; then
+    if [ "x$MONITOR_CONSOLE" = "xyes" ]; then 
+        [ ! -d /a/root ] && mkdir -p /a/root
+        cp -f /tmp/si_monitor.log /a/root/si_monitor.log
+    fi
+fi
+
+#
+################################################################################
+
+################################################################################
+#
+#   Unmount filesystems
+#
+logmsg "umount /a/var || shellout"
+umount /a/var || shellout
+
+if [ ! $kernel = "2.4" ]; then
+logmsg "umount /a/sys || shellout"
+umount /a/sys || shellout
+fi
+
+if [ ! -z $DISK1 ]
+then
+	logmsg "umount /a/scratch || shellout"
+	umount /a/scratch || shellout
+fi
+
+logmsg "umount /a/boot || shellout"
+umount /a/boot || shellout
+
+logmsg "umount /a/proc || shellout"
+umount /a/proc || shellout
+
+logmsg "umount /a/dev || shellout"
+umount /a/dev || shellout
+
+logmsg "umount /a/ || shellout"
+umount /a/ || shellout
+
+#
+################################################################################
+
+
+################################################################################
+#
+#   Tell the image server we are done
+#   
+rsync $IMAGESERVER::scripts/imaging_complete > /dev/null 2>&1
+logmsg "Imaging completed"
+#
+################################################################################
+
+if [ ! -z $MONITOR_SERVER ]; then
+    # Report the 'imaged' state to the monitor server.
+    send_monitor_msg "status=100:speed=0"
+    if [ "x$MONITOR_CONSOLE" = "xyes" ]; then 
+        # Print some empty lines and sleep some seconds to give time to
+        # the virtual console to get last messages.
+        # XXX: this is a dirty solution, we should find a better way to
+        # sync last messages... -AR-
+        logmsg ""
+        logmsg ""
+        logmsg ""
+        sleep 10
+    fi
+    # Report the post-install action.
+    send_monitor_msg "status=104:speed=0"
+fi
+
+
+# Take network interface down
+[ -z $DEVICE ] && DEVICE=eth0
+ifconfig $DEVICE down || shellout
+
+reboot

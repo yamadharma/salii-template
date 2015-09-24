@@ -1,0 +1,358 @@
+#!/bin/sh
+#
+# This file is released under GPL version 2
+# Mari Gzuk is the orginal author and therefore the copyright holder.
+# The file is taken from the unattended-gui project, namely the unattended-nodosemu script.
+# See http://unattended.technikz.de or http://unattended-gui.sourceforge.net
+# for more info on Marios unattended-gui project
+#
+# see also Marios writeup on how this work: 
+# http://unattended-gui.sourceforge.net/wiki/index.php?title=Win:installation_process
+#
+# Adapted to the unattended.sf.net project december 2007, Nils Olav Fossum
+#
+
+
+. /tmp/variables.txt
+. /tmp/local_variables.txt
+
+
+#{{{ unatt-functions.sh
+
+#
+# This file is released under GPL version 2
+#
+# the funtions 'parse_ini_file' and 'write_ini_entry'
+# are copied from one of Mario Gzuk's unattended-gui scripts 
+# Mari Gzuk is the orginal author and therefore the copyright holder.
+# (http://unattended.technikz.de or http://unattended-gui.sourceforge.net)
+#
+
+parse_ini_file()
+	{
+	# options are
+	# 1 the ini file
+	# 2 the sektion name
+	# 3 the key name
+	if [ -r $1 ]
+	then
+		cat $1 |  sed 's/;/#/' | sed -e 's/[[:space:]]*\=[[:space:]]*/=/g'  -e 's/;.*$//'  -e 's/[[:space:]]*$//'  -e 's/^[[:space:]]*//'  -e "s/^\(.*\)=\([^\"']*\)$/\1=\"\2\"/" | sed -n -e "/^\[$2\]/,/^\s*\[/{/^[^;].*\=.*/p;}" | sed 's/\\/\\\\/g' | while read LINE
+		do
+			MATCH=`echo $LINE | awk -F\= '{print $1}'`
+			M1=`echo $MATCH | tr '[A-Z]' '[a-z]'`
+			M2=`echo $3 | tr '[A-Z]' '[a-z]'`
+			if [ "$M1" == "$M2" ]
+			then
+				echo $LINE | awk -F\= '{print $2}' | sed 's/^"//' | sed 's/"$//'
+			fi
+		done
+	fi
+	}
+
+# replace_ini(file, section, key, value)
+#
+# Write $key with $value into $section from $file.
+# If it already exists, overwrite it.
+#
+# Unwanted side-effects:
+#	* Double entries within a section get killed!
+#	  (They shouldn't be there anyway, though...)
+#	* Entries may lose their order
+#
+write_ini_entry()
+	{
+	local myfile=$1 mysec=$2 mykey=$3 myval=`echo $4 | sed 's#\\\\#\\\\\\\\#g'` tmp=$1.$$
+	cat /dev/null > $tmp
+	awk "
+		BEGIN	{
+			# Indicate if we are within the right section
+			in_desired_section = 0;
+
+			# Indicate if we should write the entry as
+			# fast as possible.
+			write_now = 0;
+
+			# If 1, delete any further occurences
+			have_written = 0;
+			}
+
+		# Section matching
+		/\[.*\]/ {
+			if (\$1 ~ /\[$mysec\]/) {
+				in_desired_section = 1;
+				write_now = 1;
+			} else {
+				in_desired_section = 0;
+			}
+
+			print \$0;
+		}
+
+		# Key assignment matching
+		/.*=.*/ {
+			if (\$1 ~ /$mykey/) {
+				if (in_desired_section == 0) {
+					print \$0;
+				} else {
+					# Skip HERE to purge old value
+				}
+			} else {
+				print \$0;
+			}
+		}
+
+		# Run on every line
+		{
+			if (write_now == 1) {
+				printf \"$mykey = \\\"$myval\\\"\n\";
+				write_now = 0;
+				have_written = 1;
+			}
+		}
+		END	{
+			if (have_written == 0)
+				{
+				printf \"[$mysec]\n$mykey = \\\"$myval\\\"\n\";
+				}
+			}
+				
+	" $myfile >> $tmp
+	mv $tmp $myfile
+	}
+
+#}}}
+
+BINARYDIR="/scripts/files/ntldrbin"
+LOGTTY=/dev/tty1
+
+logmsg() {
+    # log to console
+    echo $@
+    # log to temporary file (which will go away when we reboot)
+    # this is good for envs that have bad consoles
+    local FILE=/tmp/si.log
+    if ((`mount 2>/dev/null | grep ' / ' | grep -q '(rw)'`)); then
+        echo $@ >> $FILE || shellout
+    fi
+    
+    # if syslog is running, log to it.  In order to avoid hangs we have to 
+    # add the "logger: " part in case $@ is ""
+    if [ ! -z $USELOGGER ] ;
+        then logger "logger: $@"
+    fi
+
+    # Check if the network is up before trying to send data to the
+    # monitor server.
+    if [ ! -z $MONITOR_SERVER ]; then
+        ifconfig 2>&1 | grep "inet addr" | grep -v "127.0.0.1" >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            send_monitor_msg "log=$@"
+        fi
+    fi
+}
+
+
+die()
+	{
+	logmsg "Dropping to shell"
+	}
+
+
+copy_files()
+        {
+        #$1 = file or directory
+        #$2 = destination
+        #$3 = 1 complete directory and subdirs
+        #$3 = 2 only content from directory
+        #$3 = 3 only file
+        #$4 = title
+        DIR=${1%/}
+	DIR="$DIR/"
+        case "$3" in
+                "1")
+		logmsg "$4 ($1 $2)"
+		#check if directory exist
+		DESTINATIONDIR="$2/`basename $1`"
+		if [ ! -d $DESTINATIONDIR ]
+		then
+			 mkdir -p "$DESTINATIONDIR" 
+		fi
+                cp -Lr "$1" "$2" || die "recursive directory copy failed"
+                ;;
+                "2")
+		logmsg "$4 ($1 $2)"
+                cp "$1"* "$2" > $LOGTTY 2>&1 
+		# FIXME cp exits nonzero for some reason - die "nonrecursive directory copy failed"
+                ;;
+                "3")
+		logmsg "$4 ($1 $2)"
+		cp "$1" "$2" || die "file copy failed"
+                ;;
+                *)
+                #option not given dont do anything...
+                ;;
+        esac
+	sync #  free memory caches, everything is going to disk anyway
+        }
+
+
+#BOOTNUMBER=`parted /dev/dsk print | grep "boot" | awk '{print $1}'`
+
+
+#fix_disk_geo_heads=`parse_ini_file /c/netinst/unattend.txt _meta fix_disk_geo_heads`
+#if [ -n "$fix_disk_geo_heads" ] ; then
+#   logmsg "We have fix_disk_geo_heads ($fix_disk_geo_heads), writing into /dev/dsk$BOOTNUMBER"
+#   echo -e -n "\x`printf "%02X" $fix_disk_geo_heads`"|dd of=/dev/dsk$BOOTNUMBER bs=1 seek=26 conv=notrunc > $LOGTTY 2>&1\
+#       || die "could not write fix_disk_geo_heads into /dev/dsk$BOOTNUMBER"
+#fi
+
+#fix_disk_geo_sectors=`parse_ini_file /c/netinst/unattend.txt _meta fix_disk_geo_sectors`
+#if [ -n "$fix_disk_geo_sectors" ] ; then
+#   logmsg "We have fix_disk_geo_sectors ($fix_disk_geo_sectors), writing into /dev/dsk$BOOTNUMBER"
+#   echo -e -n "\x`printf "%02X" $fix_disk_geo_sectors`"|dd of=/dev/dsk$BOOTNUMBER bs=1 seek=24 conv=notrunc > $LOGTTY 2>&1\
+#       || die "could not write fix_disk_geo_sectors into /dev/dsk$BOOTNUMBER"
+#fi
+
+#logmsg "Saving existing disk geometry for /dev/dsk$BOOTNUMBER"
+##..because the premade ntldr_boot_code_sektor0 will overwrite existing partition disk geometry.
+dd if=${DISK0} of=/c/netinst/partgeo.bin bs=1 skip=24 count=4 > $LOGTTY 2>&1\
+   || die "could not save disk geometry for /dev/dsk$BOOTNUMBER"
+
+#logmsg "Writing ntldr_boot_code_sektor0 into /dev/dsk$BOOTNUMBER"
+#dd if=$BINARYDIR/ntldr_boot_code_sektor0 of=${DISK0} bs=1 count=420 seek=90 > $LOGTTY 2>&1\
+#   || die "could not write $BINARYDIR/ntldr_boot_code_sektor0 to disk"
+
+#logmsg "Writing ntldr_boot_code_sektor12 into /dev/dsk$BOOTNUMBER"
+#dd if=$BINARYDIR/ntldr_boot_code_sektor12 of=${DISK0} bs=512 count=1 seek=12 > $LOGTTY 2>&1\
+#   || die "could not write $BINARYDIR/ntldr_boot_code_sektor12 to disk"
+
+#logmsg "Writing saved disk geometry back into /dev/dsk$BOOTNUMBER" 
+#dd if=/c/netinst/partgeo.bin of=${DISK0} bs=1 seek=24 count=4 conv=notrunc > $LOGTTY 2>&1\
+#   || die "could not write /c/netinst/partgeo.bin into /dev/dsk$BOOTNUMBER"
+
+#Move staging area for install.pl onto the drive
+#mv /c /OLDc
+#mkdir /c
+#logmsg "Mounting the soon-to-be 'C:' drive"
+#mount -t vfat /dev/dsk$BOOTNUMBER /c || die "Mounting /dev/dsk$BOOTNUMBER failed!"
+#logmsg "Moving install.pl staging files to the real soon-to-be 'C:' drive"
+#mv /OLDc/* /c/
+
+#aia paranoia
+cat /c/netinst/unattend.txt >> /dev/null || die "/c/netinst/unattend.txt gone missing!"
+
+#boot ini
+logmsg "Creating boot.ini"
+echo "[Boot Loader]" >/c/boot.ini
+echo "Timeout=2" >>/c/boot.ini
+echo "Default=C:\\\$WIN_NT\$.~BT\BOOTSECT.DAT" >>/c/boot.ini
+echo "[Operating Systems]" >>/c/boot.ini
+echo "C:\\\$WIN_NT\$.~BT\BOOTSECT.DAT = \"Installation/Update Windows\"">>/c/boot.ini
+
+#more aia-paranoia, ..
+cat /c/boot.ini >> /dev/null || die "/c/boot.ini gone missing!"
+
+#creating directorys
+logmsg "Creating /c/\$"
+mkdir /c/\$  
+
+logmsg "Creating /c/\$win_nt\$.~bt"
+mkdir /c/\$win_nt\$.~bt  
+
+logmsg "Creating /c/\$win_nt\$.~bt/system32"
+mkdir /c/\$win_nt\$.~bt/system32  
+
+logmsg "Creating /c/\$win_nt\$.~ls"
+mkdir /c/\$win_nt\$.~ls  
+
+
+#bootsect.dat
+logmsg "Creating bootsect.dat"
+dd if=${DISK0} of=/c/\$win_nt\$.~bt/bootsect.dat bs=512 count=1 > $LOGTTY 2>&1
+logmsg "Writing ntldr_boot_code into bootsect.dat"
+dd if=$BINARYDIR/ntldr_boot_code_install of=/c/\$win_nt\$.~bt/bootsect.dat\
+   bs=1 count=420 seek=90 conv=notrunc > $LOGTTY 2>&1\
+       || die "Failed writing $BINARYDIR/ntldr_boot_code_install into bootsect.dat"
+
+#copy files
+#OS_media=`parse_ini_file /c/netinst/unattend.txt _meta OS_media`
+#OS_DIR=`echo $OS_media | awk -F: '{print $2}' | sed 's/\\\/\\//g'`
+OS_DIR="/c$OS_DIR"
+if [ -d "$OS_DIR/amd64" ]
+then
+	ARCH=amd64
+	OS_INSTALL_DIR="$OS_DIR/amd64"
+else
+	ARCH=i386
+	OS_INSTALL_DIR="$OS_DIR/i386"
+fi
+
+copy_files "$OS_INSTALL_DIR/" "/c/\$win_nt\$.~ls/" 1 "Copy system"
+
+if [ -d "$OS_DIR/cmpnents" ]
+then
+	copy_files "$OS_DIR/cmpnents/" "/c/\$win_nt\$.~ls/" 1 "Copy cmpnents"
+fi
+
+if [ "$ARCH" == "amd64" ]
+then
+	copy_files "$OS_DIR/i386/" "/c/\$win_nt\$.~ls/" 1 "Copy i386 system"
+fi
+copy_files "/c/\$win_nt\$.~ls/$ARCH/" "/c/\$win_nt\$.~bt/" 2 "Copy $ARCH installation files."
+copy_files "/c/\$win_nt\$.~ls/$ARCH/system32/" "/c/\$win_nt\$.~bt/system32/" 2 "Copy $ARCH system32."
+copy_files "$OS_DIR/i386/ntldr" "/c/" 3 "Copy ntldr."
+copy_files "$OS_DIR/i386/ntdetect.com" "/c/" 3 "Copy ntdetect.com."
+copy_files "$OS_DIR/i386/setupldr.bin" "/c/\$ldr\$" 3 "Copy setupldr.bin."
+copy_files "$OS_INSTALL_DIR/txtsetup.sif" "/c/" 3 "Copy txtsetup.sif."
+
+#logmsg "Add some black magic to unattend.txt -prevents wininstaller to ask for CD"
+#write_ini_entry /c/netinst/unattend.txt "GuiUnattended" "AutoLogon" "Yes"
+#write_ini_entry /c/netinst/unattend.txt "Data" "MsDosInitiated" "1"
+#write_ini_entry /c/netinst/unattend.txt "Data" "floppyless" "1"
+#write_ini_entry /c/netinst/unattend.txt "Data" "OriSrc" "A:\I386"
+#write_ini_entry /c/netinst/unattend.txt "Data" "OriTyp" "5"
+copy_files "/c/netinst/unattend.txt" "/c/\$win_nt\$.~bt/winnt.sif" 3 "Copy winnt.sif."
+
+#move files/drivers to the right place.....
+logmsg "Move driver directory"
+mv /c/\$win_nt\$.~ls/$ARCH/\$[Oo][eE][mM]\$/* /c/\$/  
+
+#Copy textmode drivers into /c/$win_nt$.~bt/$oem$/ 
+#Do not move them instead, as it wont work.
+if [ -d "/c/\$/textmode/" ]
+then
+  logmsg "Copy TEXTMODE driver directory"
+  mkdir /c/\$win_nt\$.~bt/\$oem\$/  
+  cp /c/\$/[Tt][Ee][Xx][Tt][Mm][Oo][Dd][Ee]/* /c/\$win_nt\$.~bt/\$oem\$/  
+fi
+
+#add files/drivers from windows drivers scan...
+#NOTE: we directly copy files into /c/\$\$1 (shortcut) since code
+#      just above is moving other drivers into this target directory.
+logmsg "Copy drivers from scan of windows drivers"
+#dir_map_drv_scan=`parse_ini_file /c/netinst/unattend.txt _meta scan_windrivers_dest_map`
+#if [ "$dir_map_drv_scan" = "" ]; then
+#	echo "(no driver to copy)."
+#else
+#	# NOTE: provide UNIX paths to copy_files
+#	echo $dir_map_drv_scan | sed -e 's,\\,/,g' -e 's/@/\n/g'| while read map
+#	do
+#		drv_src=`echo $map | awk -F: '{print $1}'`
+#		drv_dst="/c/\$/\$1/`echo $map | awk -F: '{print $2}'`"
+#		# workaround: do not use copy_files():
+#		#   command 'copy_files dir1 1 dir2' copies <dir1> as <dir2>/<dir1> !
+#		#   so perform copy directly
+#		mkdir -p `dirname "$drv_dst"` || die "failed to create dir. `dirname $drv_dst`"
+#		cp -Lr "$drv_src" "$drv_dst" || die "recursive directory copy failed"
+#	done
+#fi
+
+ms-sys -f2 ${DISK0}1
+cp /scripts/files/ntldr/* /c/
+rm -f /c/\$ldr\$
+
+
+logmsg "Syncing disk -aiaparanoia :-)"
+sync
+
+#END

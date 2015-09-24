@@ -1,0 +1,67 @@
+grub2_install_local()
+{
+    chroot_mount_system_fs
+    mount_pseudofs
+
+    if [ $# -lt 1 ]
+    then
+        logmsg
+        logmsg "Must specify a disk device, eg $DISK0 or /dev/sda"
+        logmsg
+        shellout
+    fi
+    target=$1
+
+    logmsg "Using GRUB2 install method! :: $target"
+
+    logmsg "grub2 install"
+#    chroot /a /bin/bash
+#    /usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
+#    /usr/sbin/grub2-install --no-floppy $target
+#    exit
+
+    logmsg "chroot /a /usr/sbin/grub2-install --no-floppy $target"
+    chroot /a /usr/sbin/grub2-install --no-floppy $target
+
+    if [ -d /a/boot/grub2 ]
+    then
+	logmsg "/usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg"
+	chroot /a /usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
+    fi
+
+    if [ -d /a/boot/grub ]
+    then
+	logmsg "/usr/sbin/grub2-mkconfig -o /boot/grub/grub.cfg"
+	chroot /a /usr/sbin/grub2-mkconfig -o /boot/grub/grub.cfg
+    fi
+
+}
+
+grub1_install()
+{
+    chroot_mount_system_fs                                                                                                                                   
+    mount_pseudofs
+
+#    if [ $# -lt 1 ]
+#    then
+#        logmsg
+#        logmsg "Must specify a disk device, eg $DISK0 or /dev/sda"
+#        logmsg
+#        shellout
+#    fi
+#    target=$1
+
+#    logmsg "Using GRUB2 install method! :: $target"
+
+    logmsg "grub1 install"
+
+    # umount /a/boot
+    # mount -o bind /dev /a/dev
+    
+chroot /a/ /sbin/grub --batch <<EOL || shellout
+root (hd0,3)
+setup (hd0)
+quit
+EOL
+} # END grub1_install
+

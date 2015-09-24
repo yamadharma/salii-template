@@ -1,0 +1,13 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+#. /tmp/post-install/local_variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# eselect opengl set ati
+eselect opengl set xorg-x11
+
+
+
+

@@ -1,0 +1,17 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+#. /tmp/post-install/local_variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+if [ -d "/etc/X11/xorg.conf.in" ]
+then
+    for i in /etc/X11/xorg.conf.in/*
+    do
+	cat $i >> /etc/X11/xorg.conf
+    done
+fi
+
+
+ 

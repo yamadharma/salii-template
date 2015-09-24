@@ -1,0 +1,2303 @@
+#!/bin/sh
+
+#
+# "SystemImager"
+#
+#  Copyright (C) 1999-2001 Brian Elliott Finley <brian.finley@baldguysoftware.com>
+#  Copyright (C) 2002 Bald Guy Software <brian.finley@baldguysoftware.com>
+#
+# This master autoinstall script was created with SystemImager v3.0.1
+
+################################################################################
+#
+#   Variables
+#
+PATH=/sbin:/bin:/usr/bin:/usr/sbin:/tmp
+LD_LIBRARY_PATH=/lib
+SCRIPTS=scripts
+SCRIPTS_DIR=/scripts
+TORRENTS=torrents
+TORRENTS_DIR=/torrents
+FLAMETHROWER_DIRECTORY_DIR=/var/lib/systemimager/flamethrower
+BOEL_BINARIES_DIR=/tmp/boel_binaries
+VERSION="SYSTEMIMAGER_VERSION_STRING"
+FLAVOR="SYSTEMIMAGER_FLAVOR_STRING"
+#
+################################################################################
+
+
+################################################################################
+#
+#   Subroutines
+#
+################################################################################
+#
+#  fs_on_tmpfs
+#
+# Usage: 
+#   if fs_on_tmpfs /my_filesystem ; then
+fs_on_tmpfs() {
+    #XXX does this still work now with udev? -BEF-
+    df 2>/dev/null | egrep 'tmpfs ' | egrep -q " $1\$" 
+}
+
+
+
+#
+#   shellout	
+#
+#   Description:
+#   Exit with the message stored in /etc/issue.
+#
+#   Usage: $COMMAND || shellout
+#
+shellout() {
+    COUNT="$RETRY"
+    logmsg "Killing off running processes."
+    kill -9 $TMPFS_WATCHER_PID  >/dev/null 2>/dev/null
+    killall -9 udp-receiver rsync  >/dev/null 2>/dev/null
+    write_variables
+    cat /etc/issue
+    if [ ! -z $USELOGGER ] ;
+        then cat /etc/issue | logger
+    fi
+    if [ ! -z $MONITOR_SERVER ]; then
+    	logmsg "Installation failed!! Stopping report task."
+        stop_report_task -1
+    fi
+    exec sh
+}
+
+################################################################################
+#
+#  logmsg
+#
+# Usage: log a message, redirects to console / syslog depending on usage
+logmsg() {
+    # log to console
+    echo $@
+    # log to temporary file (which will go away when we reboot)
+    # this is good for envs that have bad consoles
+    local FILE=/tmp/si.log
+    if fs_on_tmpfs / ; then
+        echo $@ >> $FILE || shellout
+    fi
+    
+    # if syslog is running, log to it.  In order to avoid hangs we have to 
+    # add the "logger: " part in case $@ is ""
+    if [ ! -z $USELOGGER ] ;
+        then logger "logger: $@"
+    fi
+}
+
+
+################################################################################
+#
+#  check_version
+#
+# Usage: check_version
+check_version() {
+    logmsg
+    logmsg check_version
+    INITRD_VERSION=$VERSION
+    KERNEL_VERSION=`uname -r | sed -e s/.*boel_v//`
+    if [ "$INITRD_VERSION" != "$KERNEL_VERSION" ] ; then
+        logmsg "FATAL: Kernel version ($KERNEL_VERSION) doesn't match initrd version ($INITRD_VERSION)!"
+        shellout
+    fi
+}
+#
+################################################################################
+#
+#  get_arch
+#
+# Usage: get_arch; echo $ARCH
+get_arch() {
+    logmsg
+    logmsg get_arch
+    ARCH=`uname -m | sed -e s/i.86/i386/ -e s/sun4u/sparc64/ -e s/arm.*/arm/ -e s/sa110/arm/`
+}
+#
+################################################################################
+#
+#  adjust_arch
+#
+#  based on info in /proc adjust the ARCH variable.  This needs to run
+#  after proc is mounted.
+#
+adjust_arch() {
+    logmsg
+    logmsg adjust_arch
+    if [ "ppc64" = "$ARCH" ] ; then
+        # This takes a little bit of futzing with due to all the PPC platforms that exist.
+        if [ -d /proc/iSeries ] ; then
+            ARCH=ppc64-iSeries
+            logmsg "Detected ppc64 is really an iSeries partition..."
+        fi
+        if grep -qs PS3 /proc/cpuinfo; then
+            ARCH=ppc64-ps3
+        fi
+    fi
+}
+
+#
+#  write_local_variables
+#
+# Usage: write_local_variables
+write_local_variables() {
+
+    logmsg
+    logmsg write_local_variables
+
+    # pass all variables set here on to the hostname.sh script
+    rm -f /tmp/local_variables.txt
+  
+    echo "HOSTNAME=$HOSTNAME"                   >> /tmp/local_variables.txt || shellout
+    echo "DOMAINNAME=$DOMAINNAME"               >> /tmp/local_variables.txt
+  
+    echo "DEVICE=$DEVICE"                       >> /tmp/local_variables.txt
+    echo "IPADDR=$IPADDR"                       >> /tmp/local_variables.txt
+    echo "NETMASK=$NETMASK"                     >> /tmp/local_variables.txt
+    echo "NETWORK=$NETWORK"                     >> /tmp/local_variables.txt
+    echo "BROADCAST=$BROADCAST"                 >> /tmp/local_variables.txt
+  
+    echo "GATEWAY=$GATEWAY"                     >> /tmp/local_variables.txt
+    echo "GATEWAYDEV=$GATEWAYDEV"               >> /tmp/local_variables.txt
+  
+    echo "IMAGESERVER=$IMAGESERVER"             >> /tmp/local_variables.txt
+    echo "IMAGENAME=$IMAGENAME"                 >> /tmp/local_variables.txt
+    echo "DISK0=$DISK0"                 	>> /tmp/local_variables.txt
+  
+} # END write_local_variables
+
+
+#
+################################################################################
+#
+# Usage: get_scripts_directory
+#
+get_scripts_directory() {
+    logmsg
+    logmsg get_scripts_directory
+
+    if [ ! -z $FLAMETHROWER_DIRECTORY_PORTBASE ]; then
+        #
+        # We're using Multicast, so we should already have a directory 
+        # full of scripts.  Break out here, so that we don't try to pull
+        # the scripts dir again (that would be redundant).
+        #
+        MODULE_NAME="autoinstall_scripts"
+        DIR="${SCRIPTS_DIR}"
+        RETRY=7
+        flamethrower_client
+
+    else
+        mkdir -p ${SCRIPTS_DIR}
+        CMD="rsync -a ${IMAGESERVER}::${SCRIPTS}/ ${SCRIPTS_DIR}/"
+        logmsg "$CMD"
+        $CMD
+    fi
+}
+#
+################################################################################
+#
+# Usage: get_flamethrower_directory
+#
+get_flamethrower_directory() {
+    logmsg
+    logmsg Using multicast...
+    logmsg get_flamethrower_directory
+
+    MODULE_NAME=flamethrower_directory
+    DIR=${FLAMETHROWER_DIRECTORY_DIR}
+    RETRY=7
+    PORTBASE=9000
+    flamethrower_client
+}
+#
+################################################################################
+#
+# Usage: 
+#
+#   MODULE_NAME=my_module   # Required
+#   DIR=/my/destination/dir # Required
+#   [RETRY=7]               # Optional
+#   [PORTBASE=9000]         # Required if a sourceable file called $MODULE_NAME
+#                           #   doesn't exist
+#   [FLAMETHROWER_TARPIPE]  # If not empty, untar received data directly,
+#                           # without storing it to a temporary file
+#
+#   flamethrower_client
+#
+flamethrower_client() {
+
+    if [ ! -z $FLAMETHROWER_TARPIPE ]; then
+	FLAMETHROWER_TARPIPE=tarpipe
+    fi
+    logmsg
+    logmsg "flamethrower_client(${MODULE_NAME}) $FLAMETHROWER_TARPIPE "
+    logmsg ---------------------------------------------------------------------
+
+    # validate
+    if [ -z $PORTBASE ]; then
+        if [ -f ${FLAMETHROWER_DIRECTORY_DIR}/${MODULE_NAME} ]; then
+	    . ${FLAMETHROWER_DIRECTORY_DIR}/${MODULE_NAME}
+	else
+	    logmsg WARNING WARNING WARNING WARNING WARNING
+            logmsg You must either set PORTBASE, or have a sourceable file called
+            logmsg ${FLAMETHROWER_DIRECTORY_DIR}/MODULE_NAME
+	    # allow for now to continue until overrides get their modules
+	    return
+            #shellout
+        fi
+    fi
+    if [ -z $DIR ]; then
+        logmsg "Must set DIR !!!"
+	shellout
+    else
+        mkdir -p $DIR
+    fi
+
+    # build command
+    UDP_RECEIVER_OPTIONS="--interface ${DEVICE} --portbase $PORTBASE --nokbd"
+    if [ ! -z $TTL ]; then
+        UDP_RECEIVER_OPTIONS="$UDP_RECEIVER_OPTIONS --ttl $TTL"
+    fi
+    if [ "$NOSYNC" = "on" ]; then
+        UDP_RECEIVER_OPTIONS="$UDP_RECEIVER_OPTIONS --nosync"
+    fi
+    if [ "$ASYNC" = "on" ]; then
+        UDP_RECEIVER_OPTIONS="$UDP_RECEIVER_OPTIONS --async"
+    fi
+    if [ ! -z $MCAST_ALL_ADDR ]; then
+        UDP_RECEIVER_OPTIONS="$UDP_RECEIVER_OPTIONS --mcast-all-addr $MCAST_ALL_ADDR"
+    fi
+
+    # Which tar opts should we use?  If our tar has --overwrite capability, use it.
+    #   Summary: busybox tar doesn't (boel_binaries and prior).
+    #            Debian patched gnu tar does (image and on).
+    #            We want this option enabled for the image to ensure proper directory
+    #            permissions. -BEF-
+    tar --help 2>&1 | grep -q overwrite && TAR_OPTS='--overwrite -xp' || TAR_OPTS='-x'
+
+    # set vars
+    [ -z $RETRY ] && RETRY=0
+    COUNT=0
+    FLAMETHROWER_CLIENT_SLEEP=3
+
+    # it's the new new style (loop)
+    SUCCESS="Not Yet"
+    until [ "$SUCCESS" = "yes" ]
+    do
+        # receive cast
+        #   example udp-receiver command:
+        #   udp-receiver --interface lo --portbase 9002 --nokbd --nosync --file /tmp/multicast.tar
+
+        if [ ! -z $FLAMETHROWER_TARPIPE ]; then
+	    TAR_OPTS="$TAR_OPTS -f -"
+	    logmsg "udp-receiver $UDP_RECEIVER_OPTIONS | tar $TAR_OPTS -C $DIR"
+	    udp-receiver $UDP_RECEIVER_OPTIONS | tar $TAR_OPTS -C $DIR
+	    TAR_EXIT_STATUS=$?
+	    UDP_RECEIVER_EXIT_STATUS=0
+	else
+	    logmsg udp-receiver $UDP_RECEIVER_OPTIONS --file /tmp/multicast.tar
+	    udp-receiver $UDP_RECEIVER_OPTIONS --file /tmp/multicast.tar
+	    UDP_RECEIVER_EXIT_STATUS=$?
+
+            # untar it
+	    if [ "$UDP_RECEIVER_EXIT_STATUS" = "0" ]; then
+		logmsg tar ${TAR_OPTS} -f /tmp/multicast.tar -C ${DIR}
+		tar ${TAR_OPTS} -f /tmp/multicast.tar -C ${DIR}
+		TAR_EXIT_STATUS=$?
+	    fi
+            # discard used tarball like an old sock (recommended by: Ramon Bastiaans <bastiaans@sara.nl>)
+	    rm -f /tmp/multicast.tar
+	fi
+
+        # did everything work properly
+        if [ $UDP_RECEIVER_EXIT_STATUS -eq 0 ] && [ $TAR_EXIT_STATUS -eq 0 ]; then
+            SUCCESS=yes
+        else
+            if [ $COUNT -lt $RETRY ]; then
+                COUNT=$(( $COUNT + 1 ))
+                logmsg "flamethrower_client: Proceeding with retry $COUNT of $RETRY"
+            else
+                logmsg
+                logmsg "flamethrower_client: FATAL: Initial attempt and $RETRY retries failed!"
+                shellout
+            fi
+        fi
+
+        # sleep apnea
+        sleep_loop $FLAMETHROWER_CLIENT_SLEEP
+    done
+
+    # done
+    logmsg 'finished!'
+    logmsg 
+
+    # Unset vars, so next module (which may not have them set) won't use then unintentially
+    unset TTL
+    unset NOSYNC
+    unset ASYNC
+    unset MCAST_ALL_ADDR
+    unset RETRY
+    unset COUNT
+    unset DIR
+    unset PORTBASE
+    unset UDP_RECEIVER_EXIT_STATUS
+    unset UDP_RECEIVER_OPTIONS
+    unset TAR_EXIT_STATUS
+    unset TAR_OPTS
+    unset SUCCESS
+    unset FLAMETHROWER_TARPIPE
+}
+#
+################################################################################
+#
+#   Autodetect a staging directory for the bittorrent tarball
+#
+#   Usage: bittorrent_autodetect_staging_dir torrent
+#
+bittorrent_autodetect_staging_dir() {
+    torrent=$1
+    if [ ! -f $torrent ]; then
+        logmsg "warning: torrent file $torrent does not exist!"
+        return
+    fi
+
+    # List of preferred staging directory (/tmp = ramdisk staging)
+    preferred_dirs="/tmp /a/tmp `df 2>/dev/null | sed '1d' | sed 's/[[:space:]]\+/ /g' | cut -d' ' -f6`"
+
+    # Use a breathing room of 100MB (this should be enough for a lot of cases)
+    breathing_room=102400
+
+    # Evaluate torrent size
+    torrent_size=$((`/bin/torrentinfo-console $torrent | sed -ne 's/^file size\.*: \([0-9]\+\).*$/\1/p'` / 1024 + $breathing_room))
+
+    # Find a directory to host the image tarball
+    for dir in $preferred_dirs; do
+        [ ! -d $dir ] && continue;
+        dir_space=`df $dir 2>/dev/null | sed '1d' | sed 's/[[:space:]]\+/ /g' | cut -d' ' -f4 | sed -ne '$p'`
+        [ -z $dir_space ] && continue
+        [ $torrent_size -lt $dir_space ] && echo $dir && return
+    done
+}
+#
+################################################################################
+#
+#   Download a file using bittorrent.
+#
+#   Usage: bittorrent_get_file torrent destination
+#
+bittorrent_get_file() {
+        torrent=$1
+        destination=$2
+
+        # Bittorrent log file
+        bittorrent_log=/tmp/bittorrent-`basename ${torrent}`.log
+        # Time to poll bittorrent events
+        bittorrent_polling_time=${BITTORRENT_POLLING_TIME:-5}
+        # Wait after the download is finished to seed the other peers
+        bittorrent_seed_wait=${BITTORRENT_SEED_WAIT:-n}
+        # Minimum upload rate threshold (in KB/s), if lesser stop seeding
+        bittorrent_upload_min=${BITTORRENT_UPLOAD_MIN:-50}
+
+        # Start downloading.
+        /bin/bittorrent-console --no_upnp --no_start_trackerless_client --max_upload_rate 0 --display_interval 1 --rerequest_interval 1 --bind ${IPADDR} --save_in ${destination} ${torrent} > $bittorrent_log &
+        pid=$!
+        if [ ! -d /proc/$pid ]; then
+            logmsg "error: couldn't run bittorrent-console!"
+            shellout
+        fi
+        unset pid
+
+        # Wait for BitTorrent log to appear.
+        while [ ! -e $bittorrent_log ]; do
+            sleep 1
+        done
+
+        # Checking download...
+        while :; do
+            while :; do
+                status=`grep 'percent done:' $bittorrent_log | sed -ne '$p' | sed 's/percent done: *//' | sed -ne '/^[0-9]*\.[0-9]*$/p'`
+                [ ! -z "$status" ] && break
+            done
+            logmsg "percent done: $status %"
+            if [ "$status" = "100.0" ]; then
+                # Sleep until upload rate reaches the minimum threshold
+                while [ "$bittorrent_seed_wait" = "y" ]; do
+                    sleep $bittorrent_polling_time
+                    while :; do
+                        upload_rate=`grep 'upload rate:' $bittorrent_log | sed -ne '$p' | sed 's/upload rate: *\([0-9]*\)\.[0-9]* .*$/\1/' | sed -ne '/^\([0-9]*\)$/p'`
+                        [ ! -z $upload_rate ] && break
+                    done
+                    logmsg "upload rate: $upload_rate KB/s"
+                    [ $upload_rate -lt $bittorrent_upload_min ] && break
+                done
+                logmsg "Download completed"
+                unset bittorrent_log upload_rate counter
+                break
+            fi
+            sleep $bittorrent_polling_time
+        done
+
+        unset bittorrent_polling_time
+        unset bittorrent_seed_wait
+        unset bittorrent_upload_min
+        unset torrent
+        unset destination
+}
+#
+################################################################################
+#
+#   Stop bittorrent client.
+#
+#   Usage: bittorrent_stop
+#
+bittorrent_stop() {
+    # Try to kill all the BitTorrent processes
+    btclient="bittorrent-console"
+
+    logmsg "killing BitTorrent client..."
+    killall -15 $btclient >/dev/null 2>&1
+
+    # Forced kill after 5 secs.
+    sleep 5
+    killall -9 $btclient >/dev/null 2>&1
+
+    # Remove bittorrent logs.
+    rm -rf /tmp/bittorrent*.log
+    unset btclient
+}
+
+
+
+#
+#
+#
+run_post_install_scripts_image () 
+{
+    local imagename=${IMAGENAME}
+    logmsg
+    logmsg run_post_install_scripts_image
+    
+    get_base_hostname
+
+    if [ -d "${SCRIPTS_DIR}/post-install/${imagename}.d" ]; then
+
+        # make a copy of variables.txt available to post-install scripts -BEF-
+        cp -f /tmp/variables.txt ${SCRIPTS_DIR}/post-install/${imagename}.d
+	cp -f /tmp/local_variables.txt ${SCRIPTS_DIR}/post-install/${imagename}.d
+	cp -f /etc/resolv.conf ${SCRIPTS_DIR}/post-install/${imagename}.d
+
+        cd ${SCRIPTS_DIR}/post-install/${imagename}.d
+
+        POST_INSTALL_SCRIPTS="$POST_INSTALL_SCRIPTS `ls | grep "^[0-9][0-9]${IMAGENAME}\..*"`"
+        POST_INSTALL_SCRIPTS="$POST_INSTALL_SCRIPTS `ls | grep "^[0-9][0-9]${BASE_HOSTNAME}\..*"`"
+        POST_INSTALL_SCRIPTS="$POST_INSTALL_SCRIPTS `ls | grep "^[0-9][0-9]${HOSTNAME}\..*"`"
+        POST_INSTALL_SCRIPTS="$POST_INSTALL_SCRIPTS `ls | grep "^[0-9][0-9]all\..*"`"
+
+        for OVERRIDE in $OVERRIDES
+        do
+            POST_INSTALL_SCRIPTS="$POST_INSTALL_SCRIPTS `ls | grep "^[0-9][0-9]${OVERRIDE}\..*"`"
+        done
+
+        # Uniquify, in case we have multiple hits for any script.  
+        # Based on bug found by Cory Lueninghoener. -BEF-
+#        POST_INSTALL_SCRIPTS=`echo $POST_INSTALL_SCRIPTS | uniq`
+
+        # Now, to get rid of those pesky newlines. -BEF-
+        POST_INSTALL_SCRIPTS=`echo $POST_INSTALL_SCRIPTS | tr '\n' ' '`
+        
+        if [ ! -z "`echo ${POST_INSTALL_SCRIPTS}|sed 's/ //'`" ]; then
+
+            mkdir -p /a/tmp/post-install/ || shellout
+
+            rsync -a ${SCRIPTS_DIR}/post-install/${imagename}.d/* /a/tmp/post-install/ || shellout
+
+            for POST_INSTALL_SCRIPT in $POST_INSTALL_SCRIPTS
+            do
+                if [ -e "$POST_INSTALL_SCRIPT" ]; then
+                    logmsg ">>> $POST_INSTALL_SCRIPT"
+                    chmod +x /a/tmp/post-install/$POST_INSTALL_SCRIPT || shellout
+                    chroot /a/ /tmp/post-install/$POST_INSTALL_SCRIPT 
+		    # || shellout
+                fi
+            done
+        else
+            logmsg "No post-install scripts found."
+        fi
+
+        # Clean up post-install script directory.
+        rm -rf /a/tmp/post-install/ || shellout
+    fi
+} # END run_post_install_scripts_image
+#
+
+# Checking hardware profile
+check_profile ()
+{
+
+#export SFDISK_OPTIONS=
+
+case ${HOSTNAME} in
+    dk1n[456]?)
+	export HARDWARECLASS="scenic-x102 video_sis scr_1280x1024 scr_auto"
+	export HARDWARE_OPT="--exclude=/usr/share/doc/*"
+	export GRUB=grub2
+	;;	
+    dk2n*)
+	export HARDWARECLASS="formoza net_sis900 video_sis scr_1024x768 scr_auto"
+	;;
+#    dk2n8?|dk3n8?)
+#	export HARDWARECLASS="simlh net_rtl8139 video_sis650 video_sis scr_1024x768 monitor_greenwood"
+#	export HARDWARE_OPT="--exclude=/usr/share/doc/*"
+#	;;
+    dk2n4?)
+	export HARDWARECLASS="gem667 net_rtl8139 video_i810 scr_1024x768 monitor_greenwood"
+	export SFDISK_OPTIONS="-H 16 -S 255 -C 19158"
+	export HARDWARE_OPT="--exclude=/usr/share/doc/*"
+	export GRUB=grub2
+	;;
+    dk3n*|dk6n*)
+	export HARDWARECLASS="chipset_intel net_rtl8168 video_ati sound_rltk-hda scr_1280x1024 scr_auto massstorage_intel5ahci"
+	export GRUB=grub2
+	;;
+    dk4n*)
+	export HARDWARECLASS="chipset_intel net_rtl8168 video_ati sound_rltk-hda scr_1920x1080 scr_auto massstorage_intel5ahci"
+	export GRUB=grub2
+	;;
+#    dk3n7?)
+#	export HARDWARECLASS="gem667 net_3com video_i810 scr_1024x768 monitor_greenwood"
+#	export HARDWARE_OPT="--exclude=/usr/share/doc/*"
+#	export GRUB=grub1
+#	;;
+    dk5n*)
+	export HARDWARECLASS="p4titan+nvidia+21monitor video_nvidia net_e100 scr_1600x1200 scr_auto boot_win_first"
+	export GRUB=grub2
+	;;
+#    dk7n2?|dk6n2?)
+#	export HARDWARECLASS="ga-8i945gmf video_ati scr_1280x1024"
+#	export GRUB=grub2
+#	;;
+    dk7n2?)
+	export HARDWARECLASS="ga-8i945gmf video_ati.x550 scr_1280x1024 scr_auto disk_ide"
+	export GRUB=grub2
+	;;
+#    dk7n*)
+#	export HARDWARECLASS="p4titan+nvidia+21monitor video_nvidia net_e100 scr_1600x1200"
+#	export GRUB=grub2
+#	;;
+#    dk6n*)
+#	export HARDWARECLASS="p4titan+nvidia video_nvidia net_e100 scr_1280x1024"
+#	export GRUB=grub2
+#	;;
+    dk7n*)
+	export HARDWARECLASS="i865 net_e100 video_nvidia scr_1280x1024 scr_auto"
+	export GRUB=grub2
+	;;
+    dk116n1?)
+	# dc7800
+	export HARDWARECLASS="mb_intel sound_adihd net_e1000 video_nvidia scr_1280x1024 boot_win_first video_nvidia-setup dc7800 video_nvidia-nonfree"
+	export GRUB=grub2
+#	export NORMGRUB=1
+	;;
+    dk116n2?)
+	# dx7400
+	export HARDWARECLASS="mb_intel sound_rltk-hda net_bcm5700 video_nvidia scr_1280x1024 scr_auto boot_win_first video_nvidia-setup"
+	export GRUB=grub2
+#	export NORMGRUB=1
+	;;
+    dk284n*|dk286n*)
+	export HARDWARECLASS="net_rtl8168 video_nvidia scr_1280x1024"
+	export PARTIMAGE_NAME="dk286.partimg.gz.000"
+	;;
+    dk303n*)
+	export HARDWARECLASS="winonly net_rtl8168 video_nvidia scr_1280x1024"
+#	export HARDWARECLASS="winonly net_sis900 video_nvidia scr_1024x768"
+#	export PARTIMAGE_NAME="dk286.partimg.gz.000"
+	;;
+    *)
+	shellout
+	;;
+esac || shellout 
+
+} # END chek_profile
+
+
+disk_enumeration ()
+{
+# BEGIN disk enumeration
+#
+# Note the kludgey way to get /dev/sd* and /dev/*/c*d* to sort properly...
+#
+# Parse the correct file depending by the kernel release -AR-
+if [ `uname -r | sed s/^\(2\.[64]\).*/\1/` = "2.4" ]; then
+    diskfile=/proc/partitions
+else
+    diskfile=/proc/diskstats
+fi 
+echo DISKORDER=${DISKORDER=sd,cciss,ida,rd,hd}
+[ -z $DISKORDER ] || {
+  logmsg enumerate_disks
+  order=`echo "$DISKORDER" | sed 's/ /,/g' | sed s/,,*/,/g | sed s/^,//`
+  DISKS=0
+  while : ; do
+    [ -z $order ] && break
+    type=`expr $order : '\([^,]*\),' \| $order`
+    case $type in
+    cciss | ida | rd )
+      for dev in `cat $diskfile | sed -ne "s/.*\($type\\/c[0-9]d[0-9]\).*/\1/p" | sort -u` ; do
+        logmsg " $dev"
+        eval DISK$DISKS=/dev/${dev}
+        DISKS=`expr $DISKS + 1`
+      done
+      ;;
+    hd | sd )
+      for dev in `cat $diskfile | sed -ne "s/.*\($type[a-z]\+\).*/\1/p" | sort -u` ; do
+        logmsg " $dev"
+        eval DISK$DISKS=/dev/${dev}
+        DISKS=`expr $DISKS + 1`
+      done
+      ;;
+    * )
+      logmsg "type='$type'"
+      shellout
+      ;;
+    esac
+    order=`expr $order : '[^,]*,\(.*\)'`
+  done
+  logmsg DISKS=$DISKS
+  [ $DISKS -eq 0 ] && {
+    beep
+    beep
+    logmsg ""
+    logmsg "NO DISK DEVICE FILES WERE FOUND.  THIS USUALLY MEANS THE KERNEL DID NOT"
+    logmsg "RECOGNIZE ANY OF THE ATTACHED DISKS."
+    logmsg ""
+    logmsg "The kernel boot messages, which preceded this, may indicate why."
+    logmsg ""
+    logmsg "Reverting to disk configuration specified by image master script."
+    DISKORDER=
+    logmsg ""
+  }
+  echo
+  beep
+
+if [ -z $DISKORDER ] ; then
+  export DISK0=/dev/hda
+elif [ -z $DISK0 ] ; then
+  echo "Undefined: DISK0"
+  shellout
+fi
+
+}
+
+} # END disk_enumeration
+
+# Set partition size
+set_partitioning ()
+{
+
+echo "HARDWARECLASS=" ${HARDWARECLASS}
+
+case ${HARDWARECLASS} in
+    vectra|old+3c509)
+	hda1_ps=97
+	hda2_ps=0
+	hda3_ps=3	
+	hda5_ps=1
+	hda6_ps=1
+	hda4_ps=1
+	;;
+    acer*)
+	hda1_ps=96
+	hda2_ps=2.5
+	hda3_ps=1	
+	hda5_ps=0.5
+	hda6_ps=0.5
+	hda4_ps=0.5
+	;;
+    *)
+	hda1_ps=35	# Windows # razbivka so 2-go sectora
+	hda2_ps=12	# AFS
+	hda3_ps=48	# Extended
+	hda5_ps=44	# root
+	hda6_ps=4	# swap	
+	hda4_ps=4	# boot
+	;;
+esac || shellout 
+
+#case ${HOSTNAME} in
+#    dk116n*)
+#	hda1_ps=30	# Windows
+#	hda2_ps=18	# Empty
+#	hda3_ps=48	# Extended
+#	hda5_ps=44	# root
+#	hda6_ps=4	# swap	
+#	hda4_ps=4	# boot
+#	;;
+#    *)
+#	hda1_ps=40	# Windows
+#	hda2_ps=8	# Empty
+	hda3_ps=48	# Extended
+#	hda5_ps=44	# root
+#	hda6_ps=4	# swap	
+#	hda4_ps=4	# boot
+#	;;
+#esac || shellout 
+
+} # END set_partitioning
+
+partition_2_6_fixup ()
+{
+### Partition fixups fo 2.6 kernel
+
+#uname_r=`uname -r | sed s/^\(2\.[64]\).*/\1/`
+#case ${uname_r} in
+#2.6.*)
+
+if [ -d "/sys/firmware/edd" ]
+then
+
+NO_EDD=
+
+PURE_DISK0=`echo $DISK0 | sed s:/dev/::`
+
+SIZE_DISK0=`cat /sys/block/${PURE_DISK0}/size`
+HEAD_DISK0=`cat  /sys/firmware/edd/int13_dev80/legacy_max_head`
+HEAD_DISK0=$(echo "(${HEAD_DISK0} + 1)" | bc)
+SECTOR_DISK0=`cat  /sys/firmware/edd/int13_dev80/legacy_sectors_per_track`
+CYLINDER_DISK0=$(echo "((${SIZE_DISK0} / ${SECTOR_DISK0}) / ${HEAD_DISK0})" | bc)
+
+echo "bios_cyl:${CYLINDER_DISK0} bios_head:${HEAD_DISK0} bios_sect:${SECTOR_DISK0}" > /proc/ide/${PURE_DISK0}/settings 
+
+else
+NO_EDD=1
+fi
+#;;
+#2.4.*)
+#;;
+#esac
+
+
+###
+}
+
+disk_size ()
+{
+local DISK_SIZE
+local DISK_SIZE2
+
+PARTED_V=`parted -v | sed -e "s:GNU Parted ::"`
+
+# Get the size of the destination disk so that we can make the partitions fit properly.
+case ${PARTED_V} in
+    1.6.?)
+	DISK_SIZE=`parted -s $DISK0 print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/ //' `
+	DISK_SIZE2=`parted -s ${DISK0}2 print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/ //' `
+	;;
+    1.6.2?*)
+	DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/MB//' | sed 's/ //' `
+	DISK_SIZE2=`parted -s ${DISK0}2 unit MB print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/MB//' | sed 's/ //' `
+	;;	
+    1.8*)
+	DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk ' | sed 's/^.*: //g' | sed 's/MB.*$//' | sed 's/MB//' | sed 's/ //' `
+	DISK_SIZE2=`parted -s ${DISK0}2 unit MB print | grep 'Disk ' | sed 's/^.*: //g' | sed 's/MB.*$//' | sed 's/MB//' | sed 's/ //' `
+	;;	
+esac	
+
+# DISK_SIZE2=$(echo "scale=3; (($DISK_SIZE * $hda2_ps / 100))" | bc)
+
+echo "DISK_SIZE=$DISK_SIZE"		>> /tmp/local_variables.txt
+echo "DISK_SIZE2=$DISK_SIZE2"		>> /tmp/local_variables.txt
+
+}
+
+make_partitions ()
+{
+
+# partition_2_6_fixup
+
+PARTED_V=`parted -v | sed -e "s:GNU Parted ::"`
+
+### BEGIN partition $DISK0 ###
+logmsg "Partitioning $DISK0..."
+logmsg "Old partition table for $DISK0:"
+parted -s -- $DISK0 print
+
+#parted -s -- /dev/hda rm 1
+#parted -s -- /dev/hda rm 2
+#parted -s -- /dev/hda rm 3
+#parted -s -- /dev/hda rm 4
+
+# Create disk label.  This ensures that all remnants of the old label, whatever
+# type it was, are removed and that we're starting with a clean label.
+logmsg "parted -s -- $DISK0 mklabel msdos || shellout"
+parted -s -- $DISK0 mklabel msdos || shellout
+
+# Get the size of the destination disk so that we can make the partitions fit properly.
+case ${PARTED_V} in
+    1.6.?)
+	DISK_SIZE=`parted -s $DISK0 print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' `
+	;;
+    1.6.2?*)
+	DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/MB//' `
+	;;	
+    1.8*)
+	DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk ' | sed 's/^.*: //g' | sed 's/MB.*$//' | sed 's/MB//' `
+	
+	;;	
+esac	
+#DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/MB//' `
+#DISK_SIZE=`parted -s $DISK0 print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' `
+[ -z $DISK_SIZE ] && shellout
+
+echo "DISK_SIZE= " $DISK_SIZE
+
+if [ "$ARCH" = "alpha" ]; then
+    END_OF_LAST_PRIMARY=1
+else
+#    END_OF_LAST_PRIMARY=0
+    END_OF_LAST_PRIMARY=2
+fi
+# END_OF_LAST_PRIMARY=0
+
+echo "Creating partition ${DISK0}1:"
+START_MB=$END_OF_LAST_PRIMARY
+END_MB=$(echo "scale=3; ($END_OF_LAST_PRIMARY + ($DISK_SIZE * $hda1_ps / 100))" | bc)
+#"
+#echo "parted -s -- ${DISK0} mkpart primary fat32 $START_MB $END_MB || shellout"
+#parted -s -- ${DISK0} mkpart primary fat32 $START_MB $END_MB || shellout
+echo "parted -s -- ${DISK0} mkpartfs primary fat32 $START_MB $END_MB || shellout"
+parted -s -- ${DISK0} mkpartfs primary fat32 $START_MB $END_MB || shellout
+
+END_OF_LAST_PRIMARY=$END_MB
+echo "parted -s -- ${DISK0} set 1 boot on || shellout"
+parted -s -- ${DISK0} set 1 boot on || shellout
+# parted -s -- ${DISK0} set 1 lba on || shellout
+
+echo "Creating partition ${DISK0}2:"
+START_MB=$END_OF_LAST_PRIMARY
+END_MB=$(echo "scale=3; ($END_OF_LAST_PRIMARY + ($DISK_SIZE * $hda2_ps / 100))" | bc)
+#"
+##echo "parted -s -- ${DISK0} mkpart primary fat32 $START_MB $END_MB || shellout"
+##parted -s -- ${DISK0} mkpart primary fat32 $START_MB $END_MB || shellout
+#echo "parted -s -- ${DISK0} mkpartfs primary fat32 $START_MB $END_MB || shellout"
+#parted -s -- ${DISK0} mkpartfs primary fat32 $START_MB $END_MB || shellout
+echo "parted -s -- ${DISK0} mkpart primary ext2 $START_MB $END_MB || shellout"
+parted -s -- ${DISK0} mkpart primary ext2 $START_MB $END_MB || shellout
+END_OF_LAST_PRIMARY=$END_MB
+
+echo "Creating partition ${DISK0}3:"
+START_MB=$END_OF_LAST_PRIMARY
+END_MB=$(echo "scale=3; ($END_OF_LAST_PRIMARY + ($DISK_SIZE * $hda3_ps / 100))" | bc)
+#"
+echo "parted -s -- ${DISK0} mkpart extended $START_MB $END_MB || shellout"
+parted -s -- ${DISK0} mkpart extended $START_MB $END_MB || shellout
+END_OF_LAST_PRIMARY=$END_MB
+END_OF_LAST_LOGICAL=$START_MB
+
+echo "Creating partition ${DISK0}4:"
+START_MB=$END_OF_LAST_PRIMARY
+END_MB=$(echo "scale=3; ($END_OF_LAST_PRIMARY + ($DISK_SIZE * $hda4_ps / 100))" | bc)
+#"
+echo "parted -s -- ${DISK0} mkpart primary ext2 $START_MB $END_MB || shellout"
+parted -s -- ${DISK0} mkpart primary ext2 $START_MB $END_MB || shellout
+END_OF_LAST_PRIMARY=$END_MB
+
+echo "Creating partition ${DISK0}5:"
+START_MB=$END_OF_LAST_LOGICAL
+END_MB=$(echo "scale=3; ($END_OF_LAST_LOGICAL + ($DISK_SIZE * $hda5_ps / 100))" | bc)
+#"
+echo "parted -s -- ${DISK0} mkpart logical ext2 $START_MB $END_MB || shellout"
+parted -s -- ${DISK0} mkpart logical ext2 $START_MB $END_MB || shellout
+END_OF_LAST_LOGICAL=$END_MB
+
+echo "Creating partition ${DISK0}6:"
+START_MB=$END_OF_LAST_LOGICAL
+END_MB=$(echo "scale=3; ($END_OF_LAST_LOGICAL + ($DISK_SIZE * $hda6_ps / 100))" | bc)
+#"
+echo "parted -s -- ${DISK0} mkpart logical ext2 $START_MB $END_MB || shellout"
+parted -s -- ${DISK0} mkpart logical linux-swap $START_MB $END_MB || shellout
+END_OF_LAST_LOGICAL=$END_MB
+
+#echo "Removing partition ${DISK0}2:"
+#echo "parted -s -- ${DISK0} rm 2 || shellout"
+#parted -s -- ${DISK0} rm 2 || shellout
+
+logmsg "New partition table for $DISK0:"
+logmsg "parted -s -- $DISK0 print"
+parted -s -- $DISK0 print
+### END partition $DISK0 ###
+
+sfdisk -R $DISK0
+sleep 60
+sfdisk -R $DISK0
+sleep 60
+
+} # END make_partitions
+
+make_partitions_disabled ()
+{
+### BEGIN partition $DISK0 ###
+logmsg "Partitioning $DISK0..."
+logmsg "Old partition table for $DISK0:"
+parted -s -- $DISK0 print
+
+#parted -s -- /dev/hda rm 1
+#parted -s -- /dev/hda rm 2
+#parted -s -- /dev/hda rm 3
+#parted -s -- /dev/hda rm 4
+
+# Create disk label.  This ensures that all remnants of the old label, whatever
+# type it was, are removed and that we're starting with a clean label.
+#logmsg "parted -s -- $DISK0 mklabel msdos || shellout"
+#parted -s -- $DISK0 mklabel msdos || shellout
+
+# Get the size of the destination disk so that we can make the partitions fit properly.
+#DISK_SIZE=`parted -s $DISK0 unit cyl print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/cyl//' `
+##DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/MB//' `
+##DISK_SIZE=`parted -s $DISK0 print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' `
+DISK_SIZE=`sfdisk $DISK0 | sed 's/^.*: //g' | sed 's/ cylinders.*//g'`
+[ -z $DISK_SIZE ] && shellout
+if [ "$ARCH" = "alpha" ]; then
+    END_OF_LAST_PRIMARY=1
+else
+    END_OF_LAST_PRIMARY=0
+fi
+# END_OF_LAST_PRIMARY=0
+
+DISK_SIZE=$(echo "($END_OF_LAST_PRIMARY + $DISK_SIZE - 1)" | bc)
+
+echo "DISK_SIZE=" ${DISK_SIZE}
+
+if [ ! -z "${SFDISK_OPTIONS}" ]
+then
+#DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/MB//' `
+DISK_SIZE=`parted -s $DISK0 print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' `
+#
+sfdisk ${SFDISK_OPTIONS} -D -uM --force ${DISK0} << EOF
+,$(echo "($DISK_SIZE * $hda1_ps / 100)" | bc),0C,*
+,$(echo "($DISK_SIZE * $hda2_ps / 100)" | bc),0C
+,$(echo "($DISK_SIZE * $hda3_ps / 100)" | bc),0F
+;
+,$(echo "($DISK_SIZE * $hda5_ps / 100)" | bc),L
+,$(echo "($DISK_SIZE * $hda6_ps / 100)" | bc),S
+EOF
+else
+sfdisk -D --force ${DISK0} << EOF
+,$(echo "($DISK_SIZE * $hda1_ps / 100)" | bc),0C,*
+,$(echo "($DISK_SIZE * $hda2_ps / 100)" | bc),0C
+,$(echo "($DISK_SIZE * $hda3_ps / 100)" | bc),E
+;
+,$(echo "($DISK_SIZE * $hda5_ps / 100)" | bc),L
+,$(echo "($DISK_SIZE * $hda6_ps / 100)" | bc),S
+EOF
+fi
+
+#,,L
+
+#sfdisk --force ${DISK0} -N 1 << EOF
+#,$(echo "($DISK_SIZE * $hda1_ps / 100)" | bc),0C
+#EOF
+
+#sfdisk --force ${DISK0} -N 2 << EOF
+#,$(echo "($DISK_SIZE * $hda2_ps / 100)" | bc),0C
+#EOF
+
+#sfdisk --force ${DISK0} -N 3 << EOF
+#,$(echo "($DISK_SIZE * $hda3_ps / 100)" | bc),E
+#EOF
+
+#sfdisk --force ${DISK0} -N 5 << EOF
+#,$(echo "($DISK_SIZE * $hda5_ps / 100)" | bc),L
+#EOF
+
+#sfdisk --force ${DISK0} -N 6 << EOF
+#,$(echo "($DISK_SIZE * $hda6_ps / 100)" | bc),S
+#EOF
+
+#sfdisk --force ${DISK0} -N 4 << EOF
+#,,L
+#EOF
+
+}
+
+filesystem_creation_linux ()
+{
+### BEGIN swap and filesystem creation commands ###
+
+echo "${MKFS_ROOT} ${DISK0}5 || shellout"
+${MKFS_ROOT} ${DISK0}5 || shellout
+tune2fs -o user_xattr ${DISK0}5
+echo "mkdir -p /a/ || shellout"
+mkdir -p /a/ || shellout
+echo "mount ${DISK0}5 /a/ -t ${FS_ROOT} -o noatime || shellout"
+mount ${DISK0}5 /a/ -t ${FS_ROOT} -o noatime || shellout
+
+echo "${MKFS_BOOT} ${DISK0}4 || shellout"
+${MKFS_BOOT} ${DISK0}4 || shellout
+tune2fs -o user_xattr ${DISK0}4
+echo "mkdir -p /a/boot || shellout"
+mkdir -p /a/boot || shellout
+echo "mount ${DISK0}4 /a/boot -t ${FS_BOOT} -o noatime || shellout"
+mount ${DISK0}4 /a/boot -t ${FS_BOOT} -o noatime || shellout
+
+logmsg "mkswap -v1 ${DISK0}6 || shellout"
+mkswap -v1 -L swap ${DISK0}6 
+#|| shellout
+#logmsg "swapon ${DISK0}6 || shellout"
+#swapon ${DISK0}6 || shellout
+
+
+echo "sfdisk --change-id ${DISK0} 2 83 || shellout"
+sfdisk --change-id ${DISK0} 2 83
+
+echo "${MKFS_AFSCACHE} ${DISK0}2 || shellout"
+${MKFS_AFSCACHE} ${DISK0}2 || shellout
+tune2fs -o user_xattr ${DISK0}2
+
+### END swap and filesystem creation commands ###
+} # END filesystem_creation_linux
+
+filesystem_mount_linux ()
+{
+
+echo "mkdir -p /a/ || shellout"
+mkdir -p /a/ || shellout
+tune2fs -L root ${DISK0}5
+tune2fs -o user_xattr ${DISK0}5
+${FSCK_ROOT} ${DISK0}5
+echo "mount ${DISK0}5 /a/ -t ${FS_ROOT} -o noatime || shellout"
+mount ${DISK0}5 /a/ -t ${FS_ROOT} -o noatime || shellout
+
+echo "mkdir -p /a/boot || shellout"
+mkdir -p /a/boot || shellout
+tune2fs -L boot ${DISK0}4
+tune2fs -o user_xattr ${DISK0}4
+echo "mount ${DISK0}4 /a/boot -t ${FS_BOOT} -o noatime || shellout"
+mount ${DISK0}4 /a/boot -t ${FS_BOOT} -o noatime || shellout
+
+logmsg "mkswap -v1 -L swap ${DISK0}6 || shellout"
+mkswap -v1 -L swap ${DISK0}6
+# || shellout
+logmsg "swapon ${DISK0}6 || shellout"
+swapon ${DISK0}6 
+# || shellout
+
+echo "${MKFS_AFSCACHE} ${DISK0}2 || shellout"
+${MKFS_AFSCACHE} ${DISK0}2 || shellout
+tune2fs -o user_xattr ${DISK0}2
+
+} # END filesystem_mount_linux
+
+filesystem_creation_win ()
+{
+
+# partition_2_6_fixup
+
+
+echo "sfdisk --change-id ${DISK0} 1 0C || shellout"
+sfdisk --change-id ${DISK0} 1 0C 
+#|| shellout
+
+parted -s -- $DISK0 print
+
+#echo "mkdosfs -F 32 -v ${DISK0}1 || shellout"
+#/tmp/4dos/mkdosfs -F 32 -v ${DISK0}1 || shellout
+
+#case ${NO_EDD} in
+#1)
+#echo "mkdosfs -F 32 -v ${DISK0}1 || shellout"
+#mkdosfs -F 32 -v ${DISK0}1 || shellout
+#;;
+#*)
+#echo "parted -s -- ${DISK0} mkfs 1 fat32 || shellout"
+#mkdosfs -F 32 -v ${DISK0}1 || shellout
+#parted -s -- ${DISK0} mkfs 1 fat32 || shellout
+#;;
+#esac
+
+echo "parted -s -- ${DISK0} mkfs 1 fat32 || shellout"
+#mkdosfs -F 32 -v ${DISK0}1 || shellout
+parted -s -- ${DISK0} mkfs 1 fat32 || shellout
+
+
+logmsg "Partitioning $DISK0..."
+parted -s -- $DISK0 print
+
+
+echo "mkdosfs -F 32 ${DISK0}1 || shellout"
+/tmp/4dos/mkdosfs -F 32 ${DISK0}1 || shellout
+parted -s -- ${DISK0} resize 1 
+sfdisk -R ${DISK0}
+sleep 60
+sfdisk -R ${DISK0}
+sleep 60
+sfdisk -R ${DISK0}
+sleep 60
+
+#echo "mkdosfs -F 32 -v ${DISK0}1 || shellout"
+#mkdosfs -F 32 -v ${DISK0}1 || shellout
+# mkdosfs -F 32 -v -R 32 ${DISK0}1 || shellout
+# mkdosfs -F 32 -v ${DISK0}2
+#-S 8192 
+
+
+#parted -s -- ${DISK0} print
+#echo "parted -s -- ${DISK0} mkfs 1 fat32 || shellout"
+#parted -s -- ${DISK0} mkfs 1 fat32 
+#|| shellout
+
+
+#echo "/tmp/4dos/ms-sys -fwp ${DISK0}1"
+#/tmp/4dos/ms-sys -fpw ${DISK0}1
+# echo "/tmp/4dos/ms-sys -p ${DISK0}1"
+#/tmp/4dos/ms-sys -p ${DISK0}1
+#|| shellout
+
+
+
+#chroot /a/ dd if=/tmp/fat32-4096.bin bs=512 of=${DISK0}1 || shellout
+
+#dd if=/tmp/4dos/fat32-4096.bin bs=512 of=${DISK0}1 || shellout
+
+#mkdir /a/tmp
+#cp /tmp/4dos/dosboot.34 /a/tmp
+#chroot /a/ dd if=/tmp/dosboot.34 of=${DISK0}1 || shellout
+
+#dd if=/tmp/4dos/dosboot.34 of=${DISK0}1 || shellout
+
+#chroot /a/ /tmp/ms-sys -3 ${DISK0}1 || shellout
+
+
+####
+#add boot sector header
+#chroot /a/ dd if=/tmp/dospbs.bin bs=11 count=1 of=${DISK0}1 || shellout
+#add hidden sectors from BPB in PBS
+#chroot /a/ dd if=/tmp/dospbs.bin bs=1 count=4 seek=28 skip=28 of=${DISK0}1 || shellout
+#add physical disk code from BPB in PBS
+#chroot /a/ dd if=/tmp/dospbs.bin bs=1 count=2 seek=36 skip=36 of=${DISK0}1 || shellout
+#add boot sector bootstrap code -- NOTE: for seeking and skipping purposes, bs must equal 1 
+#chroot /a/ dd if=/tmp/dospbs.bin bs=1 count=450 seek=62 skip=62 of=${DISK0}1 || shellout
+
+####
+
+#sfdisk -R ${DISK0}
+
+echo "mkdir -p ${mountpoint_win} || shellout"
+mkdir -p ${mountpoint_win} || shellout
+echo "mount ${DISK0}1 ${mountpoint_win} -t vfat -o iocharset=cp437 || shellout"
+# FIXME Dirty hack
+# mount ${DISK0}1 ${mountpoint_win} -t vfat -o iocharset=cp437 || shellout
+
+mount ${DISK0}1 ${mountpoint_win} -t vfat -o iocharset=cp437 || \
+mount ${DISK0}1 ${mountpoint_win} -t vfat -o iocharset=cp437 || \
+mount ${DISK0}1 ${mountpoint_win} -t vfat -o iocharset=cp437 || shellout
+
+#mount ${DISK0}1 ${mountpoint_win} -t vfat -o iocharset=cp437,codepage=437 || \
+#mount ${DISK0}1 ${mountpoint_win} -t vfat -o defaults || \
+#shellout
+
+# mount ${DISK0}1 ${mountpoint_win} -t vfat -o defaults 
+#|| shellout
+#mount ${DISK0}1 ${mountpoint_win} -t vfat -o iocharset=cp437 || shellout
+#mount ${DISK0}1 ${mountpoint_win} -t vfat || shellout
+#mount ${DISK0}1 ${mountpoint_win} -t msdos || shellout
+
+#sfdisk -R ${DISK0}
+
+echo "/tmp/4dos/ms-sys -fwp ${DISK0}1"
+/tmp/4dos/ms-sys -fpw ${DISK0}1
+# echo "/tmp/4dos/ms-sys -p ${DISK0}1"
+#/tmp/4dos/ms-sys -p ${DISK0}1
+#|| shellout
+
+
+# echo "mkdosfs -F 32 -v ${DISK0}2 || shellout"
+# mkdosfs -F 32 -v ${DISK0}2 || shellout
+
+# echo "mkdir -p /a2 || shellout"
+# mkdir -p /a2 || shellout
+# echo "mount ${DISK0}2 /a2 -t vfat -o defaults || shellout"
+# mount ${DISK0}2 /a2 -t vfat -o defaults || shellout
+
+logmsg "Copy files"
+cp /tmp/4dos/io.sys ${mountpoint_win} || shellout
+cp /tmp/4dos/msdos.sys ${mountpoint_win} || shellout
+cp /tmp/4dos/command.com ${mountpoint_win} || shellout
+
+#logmsg "Copy files"
+#cp /tmp/4dos/ntldr ${mountpoint_win} || shellout
+#cp /tmp/4dos/ntdetect.com ${mountpoint_win} || shellout
+
+} # END filesystem_creation_win
+
+filesystem_creation_win_only ()
+{
+
+PARTED_V=`parted -v | sed -e "s:GNU Parted ::"`
+
+### BEGIN partition $DISK0 ###
+logmsg "Partitioning $DISK0..."
+logmsg "Old partition table for $DISK0:"
+parted -s -- $DISK0 print
+
+#parted -s -- /dev/hda rm 1
+#parted -s -- /dev/hda rm 2
+#parted -s -- /dev/hda rm 3
+#parted -s -- /dev/hda rm 4
+
+# Create disk label.  This ensures that all remnants of the old label, whatever
+# type it was, are removed and that we're starting with a clean label.
+logmsg "parted -s -- $DISK0 mklabel msdos || shellout"
+parted -s -- $DISK0 mklabel msdos || shellout
+
+# Get the size of the destination disk so that we can make the partitions fit properly.
+case ${PARTED_V} in
+    1.6.?)
+	DISK_SIZE=`parted -s $DISK0 print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' `
+	;;
+    1.6.2?*)
+	DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/MB//' `
+	;;	
+    1.8*)
+	DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk ' | sed 's/^.*: //g' | sed 's/MB.*$//' | sed 's/MB//' `
+	
+	;;	
+esac	
+#DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/MB//' `
+#DISK_SIZE=`parted -s $DISK0 print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' `
+[ -z $DISK_SIZE ] && shellout
+
+echo "DISK_SIZE= " $DISK_SIZE
+
+if [ "$ARCH" = "alpha" ]; then
+    END_OF_LAST_PRIMARY=1
+else
+    END_OF_LAST_PRIMARY=0
+fi
+# END_OF_LAST_PRIMARY=0
+
+echo "Creating partition ${DISK0}1:"
+START_MB=$END_OF_LAST_PRIMARY
+END_MB=$(echo "scale=3; ($END_OF_LAST_PRIMARY + ($DISK_SIZE * $hda1_ps / 100))" | bc)
+#"
+#echo "parted -s -- ${DISK0} mkpart primary fat32 $START_MB $END_MB || shellout"
+#parted -s -- ${DISK0} mkpart primary fat32 $START_MB $END_MB || shellout
+echo "parted -s -- ${DISK0} mkpartfs primary fat32 $START_MB $END_MB || shellout"
+parted -s -- ${DISK0} mkpartfs primary fat32 $START_MB $END_MB || shellout
+
+END_OF_LAST_PRIMARY=$END_MB
+echo "parted -s -- ${DISK0} set 1 boot on || shellout"
+parted -s -- ${DISK0} set 1 boot on || shellout
+# parted -s -- ${DISK0} set 1 lba on || shellout
+
+#echo "sfdisk --change-id ${DISK0} 1 0C || shellout"
+#sfdisk --change-id ${DISK0} 1 0C 
+#|| shellout
+
+#parted -s -- $DISK0 print
+
+#echo "mkdosfs -F 32 -v ${DISK0}1 || shellout"
+#mkdosfs -F 32 -v ${DISK0}1 || shellout
+
+#case ${NO_EDD} in
+#1)
+#echo "mkdosfs -F 32 -v ${DISK0}1 || shellout"
+#mkdosfs -F 32 -v ${DISK0}1 || shellout
+#;;
+#*)
+#echo "parted -s -- ${DISK0} mkfs 1 fat32 || shellout"
+#parted -s -- ${DISK0} mkfs 1 fat32 || shellout
+#;;
+#esac
+
+#echo "mkdosfs -F 32 -v ${DISK0}1 || shellout"
+#mkdosfs -F 32 -v ${DISK0}1 || shellout
+# mkdosfs -F 32 -v -R 32 ${DISK0}1 || shellout
+# mkdosfs -F 32 -v ${DISK0}2
+#-S 8192 
+
+
+#parted -s -- ${DISK0} print
+#echo "parted -s -- ${DISK0} mkfs 1 fat32 || shellout"
+#parted -s -- ${DISK0} mkfs 1 fat32 
+#|| shellout
+
+
+#chroot /a/ dd if=/tmp/fat32-4096.bin bs=512 of=${DISK0}1 || shellout
+
+#dd if=/tmp/4dos/fat32-4096.bin bs=512 of=${DISK0}1 || shellout
+
+#mkdir /a/tmp
+#cp /tmp/4dos/dosboot.34 /a/tmp
+#chroot /a/ dd if=/tmp/dosboot.34 of=${DISK0}1 || shellout
+
+#dd if=/tmp/4dos/dosboot.34 of=${DISK0}1 || shellout
+
+#chroot /a/ /tmp/ms-sys -3 ${DISK0}1 || shellout
+
+
+echo "/tmp/4dos/ms-sys -fwp ${DISK0}1"
+/tmp/4dos/ms-sys -fwp ${DISK0}1
+echo "/tmp/4dos/ms-sys -p ${DISK0}1"
+/tmp/4dos/ms-sys -p ${DISK0}1
+#|| shellout
+
+####
+#add boot sector header
+#chroot /a/ dd if=/tmp/dospbs.bin bs=11 count=1 of=${DISK0}1 || shellout
+#add hidden sectors from BPB in PBS
+#chroot /a/ dd if=/tmp/dospbs.bin bs=1 count=4 seek=28 skip=28 of=${DISK0}1 || shellout
+#add physical disk code from BPB in PBS
+#chroot /a/ dd if=/tmp/dospbs.bin bs=1 count=2 seek=36 skip=36 of=${DISK0}1 || shellout
+#add boot sector bootstrap code -- NOTE: for seeking and skipping purposes, bs must equal 1 
+#chroot /a/ dd if=/tmp/dospbs.bin bs=1 count=450 seek=62 skip=62 of=${DISK0}1 || shellout
+
+####
+
+echo "mkdir -p ${mountpoint_win} || shellout"
+mkdir -p ${mountpoint_win} || shellout
+echo "mount ${DISK0}1 ${mountpoint_win} -t vfat -o iocharset=cp437 || shellout"
+# FIXME Dirty hack
+mount ${DISK0}1 ${mountpoint_win} -t vfat -o iocharset=cp437,codepage=437 || \
+mount ${DISK0}1 ${mountpoint_win} -t vfat -o defaults || \
+shellout
+# mount ${DISK0}1 ${mountpoint_win} -t vfat -o defaults 
+#|| shellout
+#mount ${DISK0}1 ${mountpoint_win} -t vfat -o iocharset=cp437 || shellout
+#mount ${DISK0}1 ${mountpoint_win} -t vfat || shellout
+#mount ${DISK0}1 ${mountpoint_win} -t msdos || shellout
+
+# echo "mkdosfs -F 32 -v ${DISK0}2 || shellout"
+# mkdosfs -F 32 -v ${DISK0}2 || shellout
+
+# echo "mkdir -p /a2 || shellout"
+# mkdir -p /a2 || shellout
+# echo "mount ${DISK0}2 /a2 -t vfat -o defaults || shellout"
+# mount ${DISK0}2 /a2 -t vfat -o defaults || shellout
+
+logmsg "Copy files"
+cp /tmp/4dos/io.sys ${mountpoint_win} || shellout
+cp /tmp/4dos/msdos.sys ${mountpoint_win} || shellout
+cp /tmp/4dos/command.com ${mountpoint_win} || shellout
+
+#logmsg "Copy files"
+#cp /tmp/4dos/ntldr ${mountpoint_win} || shellout
+#cp /tmp/4dos/ntdetect.com ${mountpoint_win} || shellout
+
+} # END filesystem_creation_win_only
+
+filesystem_mount_win ()
+{
+    echo "mkdir -p ${mountpoint_win} || shellout"
+    mkdir -p ${mountpoint_win} || shellout
+    echo "mount ${DISK0}1 ${mountpoint_win} -t vfat -o iocharset=cp437 || shellout"
+    mount ${DISK0}1 ${mountpoint_win} -t vfat -o iocharset=cp437 || shellout
+}
+
+save_and_clean_mbr ()
+{
+if [ "NORMGRUB" != 1 ]
+then    
+#    /tmp/4dos/grubinst --save-mbr=/c/netinst/mbr.img "(hd0)" || shellout
+    dd if=${DISK0} of=/c/netinst/mbr.img count=1 bs=512 || shellout
+#    dd if=${DISK0} of=/c/netinst/mbr.img count=1 bs=448 || shellout    
+    /tmp/4dos/ms-sys -m ${DISK0} || shellout
+#    /tmp/4dos/ms-sys -9 ${DISK0} || shellout
+fi
+}
+
+filler_aux_linux ()
+{
+    logmsg "Nothing to aux filling for linux"
+}
+
+{
+    logmsg "Nothing to aux filling for win"
+#    rsync -av --numeric-ids $IMAGESERVER::ntinstall/ ${mountpoint_win}/
+#    rsync -av --numeric-ids $IMAGESERVER::ntinstall-overrides/$ROOMNAME/ ${mountpoint_win}/ 
+}
+
+filler ()
+{
+    local imagename
+    local mountpoint
+    imagename=${IMAGENAME}
+    case $imagename in
+	linux)
+	    export mountpoint=${mountpoint_linux}
+	    export rsync_optons="-aHS${VERBOSE_OPT} ${HARDWARE_OPT} --exclude=lost+found/ --exclude=/proc/* --numeric-ids"
+	    ;;
+	win)
+	    export mountpoint=${mountpoint_win}
+	    export rsync_optons="-a${VERBOSE_OPT} --numeric-ids"
+	    ;;
+    esac
+    
+if [ ! -z $FLAMETHROWER_DIRECTORY_PORTBASE ]; then 
+
+    # Use multicast 
+    MODULE_NAME="${IMAGENAME}"
+    DIR=/a
+    RETRY=7
+    FLAMETHROWER_TARPIPE=y
+    flamethrower_client
+else 
+    # Use rsync 
+    if [ $NO_LISTING ]; then
+        logmsg "Quietly installing image... "
+        start_spinner
+    fi
+    if [ "${TMPFS_STAGING}" = "yes" ]; then 
+
+        # Deposit image into tmpfs
+        DIR=/tmp/tmpfs_staging
+        logmsg
+        logmsg "TMPFS_STAGING=${TMPFS_STAGING} -- Staging in ${DIR}"
+        mkdir -p ${DIR}
+
+        logmsg "rsync ${rsync_optons} ${IMAGESERVER}::${IMAGENAME}/ ${DIR}/" 
+        rsync ${rsync_optons} \
+              ${IMAGESERVER}::${IMAGENAME}/ ${DIR}/ || shellout 
+
+        # Move from staging in tmpfs to disk
+        rsync ${rsync_optons} ${DIR}/ ${mountpoint}/
+    else
+        logmsg "rsync ${rsync_optons} ${IMAGESERVER}::${IMAGENAME}/ ${mountpoint}/" 
+#        rsync -aHS${VERBOSE_OPT} ${HARDWARE_OPT} --exclude=lost+found/ --exclude=/proc/* --numeric-ids ${IMAGESERVER}::${IMAGENAME}/ ${mountpoint}/ || shellout 
+        rsync ${rsync_optons} ${IMAGESERVER}::${IMAGENAME}/ ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+    fi
+fi 
+
+beep
+
+################################################################################
+#
+#   Process override directories
+#
+for OVERRIDE in $OVERRIDES
+do
+#    if [ ! -z $FLAMETHROWER_DIRECTORY_PORTBASE ]; then
+#        # Use multicast
+#        MODULE_NAME="override_${OVERRIDE}"
+#        DIR=/a
+#        RETRY=7
+#	FLAMETHROWER_TARPIPE=y
+#        flamethrower_client
+#    else
+        # Use rsync
+        logmsg "rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/"
+        rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+#    fi
+done
+
+beep
+
+#
+################################################################################
+
+filler_aux_${imagename}
+
+# Filler up!
+#case ${HARDWARECLASS} in
+#    vectra|old+3c509)
+#	rsync -av --exclude=lost+found/ --numeric-ids $IMAGESERVER::overrides/linux-grub/ /a/ || shellout    
+#	;;
+#    *)
+#        rsync -av --exclude=lost+found/ --numeric-ids $IMAGESERVER::$IMAGENAME/ /a/ || shellout    
+#	;;
+#esac || shellout 
+
+##rsync -av --exclude=lost+found/ --numeric-ids $IMAGESERVER::$IMAGENAME/ /a/ || shellout
+##rsync -av --exclude=lost+found/ --numeric-ids $IMAGESERVER::overrides/linux-grub/ /a/ || shellout
+
+## Leave notice of which image is installed on the client
+#echo $IMAGENAME > /a/etc/systemimager/IMAGE_LAST_SYNCED_TO || shellout
+
+#### BEGIN overrides ###
+#for OVERRIDE in $OVERRIDES
+#do
+#    rsync -av --numeric-ids $IMAGESERVER::overrides/linux.d/$OVERRIDE/ /a/ || echo "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+#done
+#### END overrides ###
+
+} # END filler
+
+
+filler_boot ()
+{
+    local imagename
+    local mountpoint
+    local delete_option="--delete-before --force"
+    
+    export mountpoint=${mountpoint_linux}
+    export rsync_optons="-aHS${VERBOSE_OPT} ${HARDWARE_OPT} --exclude=lost+found/ --exclude=/proc/* --exclude=/sys/* --numeric-ids --timeout=1800 --contimeout=1800"
+    
+    logmsg "rsync ${rsync_optons} ${delete_option} ${IMAGESERVER}::${IMAGENAME}/boot/* ${mountpoint}/boot/" 
+    rsync ${rsync_optons} ${delete_option} ${IMAGESERVER}::${IMAGENAME}/boot/* ${mountpoint}/boot/ 
+
+    logmsg "rsync ${rsync_optons} ${delete_option} ${IMAGESERVER}::${IMAGENAME}/lib/modules/* ${mountpoint}/lib/modules/" 
+    rsync ${rsync_optons} ${delete_option} ${IMAGESERVER}::${IMAGENAME}/lib/modules/* ${mountpoint}/lib/modules/
+
+beep
+}
+
+filler_sync ()
+{
+    local imagename
+    local mountpoint
+    local delete_option="--delete-before --force"
+    
+    imagename=${IMAGENAME}
+    case $imagename in
+	linux)
+	    export mountpoint=${mountpoint_linux}
+	    export rsync_optons="-aHS${VERBOSE_OPT} ${HARDWARE_OPT} --exclude=lost+found/ --exclude=/proc/* --exclude=/sys/* --numeric-ids --timeout=1800 --contimeout=1800"
+	    ;;
+	win)
+	    export mountpoint=${mountpoint_win}
+	    export rsync_optons="-a${VERBOSE_OPT} --numeric-ids"
+	    ;;
+    esac
+    
+# Use rsync 
+    if [ $NO_LISTING ]; then
+        logmsg "Quietly installing image... "
+        start_spinner
+    fi
+    if [ "${TMPFS_STAGING}" = "yes" ]; then 
+
+        # Deposit image into tmpfs
+        DIR=/tmp/tmpfs_staging
+        logmsg
+        logmsg "TMPFS_STAGING=${TMPFS_STAGING} -- Staging in ${DIR}"
+        mkdir -p ${DIR}
+
+        logmsg "rsync ${rsync_optons} ${IMAGESERVER}::${IMAGENAME}/ ${DIR}/" 
+        rsync ${rsync_optons} \
+              ${IMAGESERVER}::${IMAGENAME}/ ${DIR}/ || shellout 
+
+        # Move from staging in tmpfs to disk
+        rsync ${rsync_optons} ${delete_option} ${DIR}/ ${mountpoint}/
+    else
+#	for i in 1 2 3
+#	do
+        logmsg "rsync ${rsync_optons} ${delete_option} ${IMAGESERVER}::${IMAGENAME}/ ${mountpoint}/" 
+        rsync ${rsync_optons} ${delete_option} ${IMAGESERVER}::${IMAGENAME}/ ${mountpoint}/ 
+#       done
+#	|| shellout 
+    fi
+
+beep
+
+################################################################################
+#
+#   Process override directories
+#
+for OVERRIDE in $OVERRIDES
+do
+        # Use rsync
+        logmsg "rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/"
+        rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+done
+
+beep
+
+#
+################################################################################
+
+filler_aux_${imagename}
+
+# Filler up!
+#case ${HARDWARECLASS} in
+#    vectra|old+3c509)
+#	rsync -av --exclude=lost+found/ --numeric-ids $IMAGESERVER::overrides/linux-grub/ /a/ || shellout    
+#	;;
+#    *)
+#        rsync -av --exclude=lost+found/ --numeric-ids $IMAGESERVER::$IMAGENAME/ /a/ || shellout    
+#	;;
+#esac || shellout 
+
+##rsync -av --exclude=lost+found/ --numeric-ids $IMAGESERVER::$IMAGENAME/ /a/ || shellout
+##rsync -av --exclude=lost+found/ --numeric-ids $IMAGESERVER::overrides/linux-grub/ /a/ || shellout
+
+## Leave notice of which image is installed on the client
+#echo $IMAGENAME > /a/etc/systemimager/IMAGE_LAST_SYNCED_TO || shellout
+
+#### BEGIN overrides ###
+#for OVERRIDE in $OVERRIDES
+#do
+#    rsync -av --numeric-ids $IMAGESERVER::overrides/linux.d/$OVERRIDE/ /a/ || echo "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+#done
+#### END overrides ###
+
+} # END filler_sync
+
+filler_4dos ()
+{
+    local imagename
+    local mountpoint
+    local delete_option="--delete-before"
+    
+    imagename=${IMAGENAME}
+    case $imagename in
+	linux)
+	    mountpoint=${mountpoint_linux}
+	    ;;
+	win)
+	    mountpoint=${mountpoint_win}
+	    ;;
+    esac
+    
+# Use rsync 
+    if [ $NO_LISTING ]; then
+        logmsg "Quietly installing image... "
+        start_spinner
+    fi
+        # Deposit image into tmpfs
+        DIR=/tmp/4dos
+	logmsg
+        logmsg "Staging in ${DIR}"
+        mkdir -p ${DIR}
+
+        logmsg "rsync -a${VERBOSE_OPT} --numeric-ids ${IMAGESERVER}::${IMAGENAME}/ ${DIR}/" 
+        rsync -a${VERBOSE_OPT} --numeric-ids \
+	    ${IMAGESERVER}::overrides/4dos/ ${DIR}/ || shellout 
+
+	cp -R ${DIR}/bin /
+	cp -R ${DIR}/usr /	
+        # Move from staging in tmpfs to disk
+#        rsync -aHS${VERBOSE_OPT} --exclude=lost+found/ --numeric-ids ${DIR}/ ${mountpoint}/
+beep
+
+} # END filler_4dos
+
+filler_linux_override()
+{
+IMAGENAME=linux
+mountpoint=/a
+
+for OVERRIDE in $OVERRIDES
+do
+        # Use rsync
+        logmsg "rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/"
+        rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+done
+
+beep
+
+}
+
+filler_partimage ()
+{
+local mountpoint=/c
+
+#umount /c
+
+/tmp/4dos/partimage -B=foo -f3 -s 10.130.64.60 restore ${DISK0}1 ${PARTIMAGE_NAME}
+
+filesystem_mount_win
+# mount ${DISK0}1 /c
+
+for OVERRIDE in $OVERRIDES
+do
+        # Use rsync
+        logmsg "rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/"
+        rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+done
+
+beep
+
+#
+################################################################################
+
+filler_aux_win
+
+
+} # END filler_partimage
+
+filler_sysprep ()
+{
+local mountpoint=/c
+
+filesystem_mount_win
+
+for OVERRIDE in $OVERRIDES win_sysprep
+do
+        # Use rsync
+        logmsg "rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/"
+        rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+done
+
+beep
+
+#
+################################################################################
+
+# filler_aux_win
+
+} # END filler_sysprep
+
+mount_proc_sys()
+{
+
+### BEGIN mount proc in image for tools like System Configurator ###
+logmsg "mkdir -p ${mountpoint_linux}/proc || shellout"
+mkdir -p ${mountpoint_linux}/proc || shellout
+logmsg "mount proc ${mountpoint_linux}/proc -t proc -o defaults || shellout"
+mount proc ${mountpoint_linux}/proc -t proc -o defaults || shellout
+### END mount proc in image for tools like System Configurator ###
+
+### BEGIN mount sysfs in image for tools that might be run during chroot ###
+logmsg "mkdir -p ${mountpoint_linux}/sys || shellout"
+mkdir -p ${mountpoint_linux}/sys || shellout
+logmsg "mount sysfs ${mountpoint_linux}/sys -t sysfs -o defaults || shellout"
+mount sysfs ${mountpoint_linux}/sys -t sysfs -o defaults 
+#|| shellout
+### END mount sysfs in image for tools that might be run during chroot ###
+
+} # END mount_proc_sys
+
+grub1_install()
+{
+umount /a/boot
+mount -o bind /dev /a/dev
+chroot /a/ /sbin/grub --batch <<EOL || shellout
+root (hd0,3)
+setup (hd0)
+quit
+EOL
+} # END grub1_install
+
+grub2_install()
+{
+mount -o bind /dev /a/dev
+mount -o bind /sys /a/sys
+mount -o bind /proc /a/proc
+
+chroot /a/ /sbin/grub-mkconfig -o /boot/grub/grub.cfg
+chroot /a/ /sbin/grub2-install --no-floppy ${DISK0}
+} # END grub2_install
+
+grub4dos_install()
+{
+    logmsg "/tmp/4dos/bootlace.com --no-backup-mbr ${DISK0}"
+    /tmp/4dos/bootlace.com --no-backup-mbr ${DISK0}
+} # END grub4dos_install
+
+grub_install()
+{
+case ${GRUB} in
+    grub1)
+	grub1_install
+	;;
+    grub4dos)	
+	grub4dos_install
+	;;
+    grub2|*)
+	grub2_install
+	;;
+esac    
+} # END grub_install
+
+
+# ----------------------------------------------------------------------
+##
+## main part
+##
+
+# Pull in variables left behind by the linuxrc script.
+# This information is passed from the linuxrc script on the autoinstall media 
+# via /tmp/variables.txt.  Apparently the shell we use in BOEL is not 
+# intelligent enough to take a "set -a" parameter.
+#
+. /tmp/variables.txt || shellout
+
+# Load functions and other variables
+. /etc/init.d/functions
+
+get_arch
+
+if [ -z $NO_LISTING ]; then
+    VERBOSE_OPT="v"
+else
+    VERBOSE_OPT=""
+fi
+
+PATH=/sbin:/bin:/usr/bin:/usr/sbin:/tmp
+
+ROOMNAME=${HOSTNAME%%n??}
+
+images_list="linux win"
+mountpoint_linux="/a"
+mountpoint_win="/c"
+
+echo "Checking hardware profile"
+check_profile
+
+### BEGIN software-RAID initialization commands -AR- ###
+### END software-RAID initialization commands ###
+
+logmsg "Load device mapper driver (for LVM)."
+modprobe dm-mod
+
+### BEGIN LVM initialization commands -AR- ###
+### END LVM initialization commands ###
+
+### BEGIN LVM groups creation commands -AR- ###
+### END LVM groups creation commands ###
+
+### BEGIN LVM volumes creation commands -AR- ###
+### END LVM volumes creation commands ###
+
+logmsg "Load ide/scsi drivers."
+modprobe sis5513
+
+logmsg "Load additional filesystem drivers."
+modprobe reiserfs
+modprobe ext2
+modprobe ext3
+modprobe jfs
+modprobe xfs
+modprobe vfat
+modprobe ntfs
+modprobe fat
+modprobe msdos
+
+logmsg "Begin disk enumeration"
+disk_enumeration
+
+echo "Fixup disk geometry"
+partition_2_6_fixup
+
+echo "Set partition size"
+set_partitioning
+
+case ${HARDWARECLASS} in
+    vectra*|old+3c509*)
+	FS=ext2
+	MKFS="mke2fs -m0"
+	;;
+    *)
+	FS=ext4
+	FS_BOOT=ext2
+	MKFS_BOOT="mke2fs -t ${FS_BOOT} -m0 -L boot"
+	FS_ROOT=ext4
+	FS_ROOT_OP="-m0 -j  -O extents,uninit_bg,dir_index"
+	MKFS_ROOT="mke2fs -t ${FS_ROOT} ${FS_ROOT_OP} -L root"
+	FSCK_ROOT="fsck.ext4 -fy"
+	FS_AFSCACHE=ext4
+	FS_AFSCACHE_OP="-m0 -j  -O extents,uninit_bg,dir_index"
+	MKFS_AFSCACHE="mke2fs -t ${FS_AFSCACHE} ${FS_AFSCACHE_OP} -L afscache"
+
+#	MKFS="mkfs.xfs -f -q"
+	;;
+esac || shellout 
+
+write_local_variables
+
+disk_size
+
+logmsg "Partition table for $DISK0:"
+parted -s -- $DISK0 print
+
+
+#[ -z $IMAGENAME ] && IMAGENAME=linux
+#[ -z $OVERRIDES ] && OVERRIDES="4dos $HARDWARECLASS"
+
+case ${HARDWARECLASS} in
+    acer*|winonly*)
+	install_profile=win_only
+	;;
+    *)
+	;;
+esac || shellout 
+
+
+IMAGENAME=linux
+OVERRIDES="etc_template $HARDWARECLASS"
+
+case ${install_profile} in
+    linux*)
+
+	if [ "${install_profile}" = "linux_full" ]
+	then
+	    logmsg "Begin swap and filesystem creation commands for Linux"
+	    filesystem_creation_linux
+	else
+	    logmsg "Begin filesystem mount commands for Linux"
+	    filesystem_mount_linux
+	fi
+
+	logmsg "Begin mount proc and sys in image for tools like System Configurator"
+	mount_proc_sys
+
+#   Lay the image down on the freshly formatted disk(s)
+#
+	if [ ! -z $MONITOR_SERVER ]; then
+	    start_report_task
+	fi
+
+	if [ "${install_profile}" = "linux_full" ]
+	then
+	    logmsg "Download ${IMAGENAME}"
+	    filler 
+	else
+	    logmsg "Sync ${IMAGENAME}"
+	    filler_sync
+	fi
+	run_post_install_scripts_image
+	filler_4dos
+	grub_install
+	;;
+
+    win_sysprep)
+
+#logmsg "Begin filesystem mount commands for Linux"
+#filesystem_mount_linux
+    
+#logmsg "Begin mount proc and sys in image for tools like System Configurator"
+#mount_proc_sys
+	;;	
+
+    win_image)
+
+#logmsg "Begin filesystem mount commands for Linux"
+#filesystem_mount_linux
+    
+#logmsg "Begin mount proc and sys in image for tools like System Configurator"
+#mount_proc_sys
+	;;	
+
+    win|win_only)
+
+#logmsg "Begin filesystem mount commands for Linux"
+#filesystem_mount_linux
+    
+#logmsg "Begin mount proc and sys in image for tools like System Configurator"
+#mount_proc_sys
+	;;	
+
+    win)
+	logmsg "Begin filesystem mount commands for Linux"
+	filesystem_mount_linux
+	logmsg "Begin mount proc and sys in image for tools like System Configurator"
+	mount_proc_sys
+	;;	
+    win_full)
+	echo "Partitioning harddisk"
+	make_partitions
+	;;	
+    grub)
+	logmsg "Begin filesystem mount commands for Linux"
+	filesystem_mount_linux
+	logmsg "Begin mount proc and sys in image for tools like System Configurator"
+	mount_proc_sys
+	filler_4dos
+        grub_install
+	;;
+    config-files)
+	logmsg "Begin filesystem mount commands for Linux"
+	filesystem_mount_linux
+	logmsg "Begin mount proc and sys in image for tools like System Configurator"
+	mount_proc_sys
+	filler_linux_override
+	run_post_install_scripts_image 
+	filler_4dos
+	grub_install
+	;;
+    boot-files)
+	IMAGENAME=linux
+	logmsg "Begin filesystem mount commands for Linux"
+	filesystem_mount_linux
+	logmsg "Begin mount proc and sys in image for tools like System Configurator"
+	mount_proc_sys
+	filler_boot
+	filler_linux_override
+	run_post_install_scripts_image 
+	filler_4dos
+	grub_install
+	;;
+    full|*)
+	echo "Partitioning harddisk"
+	make_partitions
+	logmsg "Begin swap and filesystem creation commands for Linux"
+	filesystem_creation_linux
+	logmsg "Begin mount proc and sys in image for tools like System Configurator"
+	mount_proc_sys
+
+#   Lay the image down on the freshly formatted disk(s)
+#
+	if [ ! -z $MONITOR_SERVER ]; then
+	    start_report_task
+	fi
+
+	logmsg "Download ${IMAGENAME}"
+	filler 
+	filler_4dos
+	grub_install
+	;;
+esac
+###
+
+case ${install_profile} in
+    linux*)
+	;;
+
+    win_sysprep*)
+
+# filler_4dos
+
+IMAGENAME=win
+OVERRIDES="win_netinst win $HARDWARECLASS $ROOMNAME"
+
+#logmsg "Begin filesystem creation commands for Win"
+#filesystem_creation_win
+# filesystem_mount_win
+
+logmsg "Download partimage image ${IMAGENAME}"
+filler_sysprep
+
+##################################################################
+#
+# Uncomment the line below to leave your hostname blank.
+# Certain distributions use this as an indication to take on the
+# hostname provided by a DHCP server.  The default is to have
+# SystemConfigurator assign your clients the hostname that
+# corresponds to the IP address the use during the install.
+# (If you used to use static_dhcp, is your man.)
+#
+#HOSTNAME=""
+
+echo "sed /c/netinst/unattend.txt"
+sed -e "s:@HOSTNAME@:$HOSTNAME:g" /c/netinst/unattend.txt > /c/netinst/unattend.tmp || shellout
+cp -f /c/netinst/unattend.tmp /c/netinst/unattend.txt || shellout
+rm /c/netinst/unattend.tmp || shellout
+
+echo "sed /c/netinst/sysprep.inf"
+sed -e "s:@HOSTNAME@:$HOSTNAME:g" /c/netinst/sysprep.inf > /c/netinst/sysprep.tmp || shellout
+cp -f /c/netinst/sysprep.tmp /c/netinst/sysprep.inf || shellout
+rm /c/netinst/sysprep.tmp || shellout
+
+echo "config /netinst/unattend.txt"
+cd /c/netinst
+. /scripts/unattend.sh
+
+cp /c/netinst/sysprep.inf /c/sysprep/
+
+cd /
+	;;
+
+    win_image*)
+
+filler_4dos
+
+IMAGENAME=win
+OVERRIDES="win_netinst win $HARDWARECLASS $ROOMNAME"
+
+#logmsg "Begin filesystem creation commands for Win"
+#filesystem_creation_win
+# filesystem_mount_win
+
+logmsg "Download partimage image ${IMAGENAME}"
+filler_partimage
+
+##################################################################
+#
+# Uncomment the line below to leave your hostname blank.
+# Certain distributions use this as an indication to take on the
+# hostname provided by a DHCP server.  The default is to have
+# SystemConfigurator assign your clients the hostname that
+# corresponds to the IP address the use during the install.
+# (If you used to use static_dhcp, is your man.)
+#
+#HOSTNAME=""
+
+echo "sed /c/netinst/unattend.txt"
+sed -e "s:@HOSTNAME@:$HOSTNAME:g" /c/netinst/unattend.txt > /c/netinst/unattend.tmp || shellout
+cp -f /c/netinst/unattend.tmp /c/netinst/unattend.txt || shellout
+rm /c/netinst/unattend.tmp || shellout
+
+echo "sed /c/netinst/sysprep.inf"
+sed -e "s:@HOSTNAME@:$HOSTNAME:g" /c/netinst/sysprep.inf > /c/netinst/sysprep.tmp || shellout
+cp -f /c/netinst/sysprep.tmp /c/netinst/sysprep.inf || shellout
+rm /c/netinst/sysprep.tmp || shellout
+
+echo "config /netinst/unattend.txt"
+cd /c/netinst
+. /scripts/unattend.sh
+
+cp /c/netinst/sysprep.inf /c/sysprep/
+
+cd /
+
+run_post_install_scripts_image
+	;;
+
+    win_only*)	
+
+filler_4dos
+
+IMAGENAME=win
+OVERRIDES="win_netinst win $HARDWARECLASS $ROOMNAME"
+
+logmsg "Begin filesystem creation commands for Win"
+#filesystem_creation_win_only
+filesystem_mount_win
+
+logmsg "Download ${IMAGENAME}"
+filler
+
+##################################################################
+#
+# Uncomment the line below to leave your hostname blank.
+# Certain distributions use this as an indication to take on the
+# hostname provided by a DHCP server.  The default is to have
+# SystemConfigurator assign your clients the hostname that
+# corresponds to the IP address the use during the install.
+# (If you used to use static_dhcp, is your man.)
+#
+#HOSTNAME=""
+
+echo "sed /c/netinst/unattend.txt"
+sed -e "s:@HOSTNAME@:$HOSTNAME:g" /c/netinst/unattend.txt > /c/netinst/unattend.tmp || shellout
+cp -f /c/netinst/unattend.tmp /c/netinst/unattend.txt || shellout
+rm /c/netinst/unattend.tmp || shellout
+
+echo "config /netinst/unattend.txt"
+cd /c/netinst
+. /scripts/unattend.sh
+
+save_and_clean_mbr
+
+cd /
+	;;
+
+    full|win|win_full|win_only)	
+
+filler_4dos
+
+IMAGENAME=win
+OVERRIDES="win_netinst win $HARDWARECLASS $ROOMNAME"
+
+logmsg "Begin filesystem creation commands for Win"
+filesystem_creation_win
+# filesystem_mount_win
+
+logmsg "Download ${IMAGENAME}"
+filler
+
+##################################################################
+#
+# Uncomment the line below to leave your hostname blank.
+# Certain distributions use this as an indication to take on the
+# hostname provided by a DHCP server.  The default is to have
+# SystemConfigurator assign your clients the hostname that
+# corresponds to the IP address the use during the install.
+# (If you used to use static_dhcp, is your man.)
+#
+#HOSTNAME=""
+
+echo "sed /c/netinst/unattend.txt"
+sed -e "s:@HOSTNAME@:$HOSTNAME:g" /c/netinst/unattend.txt > /c/netinst/unattend.tmp || shellout
+cp -f /c/netinst/unattend.tmp /c/netinst/unattend.txt || shellout
+rm /c/netinst/unattend.tmp || shellout
+
+echo "config /netinst/unattend.txt"
+cd /c/netinst
+. /scripts/unattend.sh
+
+save_and_clean_mbr
+
+cd /
+
+logmsg "Install WinNT bootloader"
+. ${SCRIPTS_DIR}/include/win.d/nt5x-install
+	;;
+esac
+
+    
+### BEGIN systemconfigurator ###
+# Configure the client's hardware, network interface, and boot loader.
+
+#chroot /a/ /sbin/grub --batch <<EOL || shellout
+#root (hd0,3)
+#setup (hd0)
+#quit
+#EOL
+
+#chroot /a/ systemconfigurator --configsi --stdin <<EOL || shellout
+#
+#[NETWORK]
+#HOSTNAME = $HOSTNAME
+#DOMAINNAME = $DOMAINNAME
+#
+#[INTERFACE0]
+#DEVICE = eth0
+#TYPE = dhcp
+#EOL
+### END systemconfigurator ###
+
+#( chroot /a/ /bin/bash;
+#cd /dev;
+#../sbin/MAKEDEV generic-i386  ;
+#exit; )
+
+# chroot /a/ systemconfigurator --run-boot || shellout
+
+################################################################################
+#
+#   Post Install Scripts
+#
+run_post_install_scripts
+#
+################################################################################
+
+
+################################################################################
+#
+#   Unmount filesystems
+#
+
+logmsg "umount /c || shellout"
+umount /c 
+
+logmsg "umount /a/sys || shellout"
+umount /a/sys 
+
+logmsg "umount /a/proc || shellout"
+umount /a/proc 
+
+logmsg "umount /a/boot || shellout"
+umount /a/boot 
+
+logmsg "umount /a/ || shellout"
+umount /a/ 
+
+#
+################################################################################
+
+
+################################################################################
+#
+#   Tell the image server we're done
+#   
+rsync $IMAGESERVER::scripts/imaging_complete > /dev/null 2>&1
+#
+################################################################################
+
+# Take network interface down
+[ -z $DEVICE ] && DEVICE=eth0
+ifconfig $DEVICE down || shellout
+
+# Announce completion (even for non beep-incessantly --post-install options)
+beep 3
+
+# beep_incessantly
+
+# reboot the autoinstall client
+shutdown -r now

@@ -1,0 +1,13 @@
+#
+# Sample boot menu configuration file
+#
+
+# Boot automatically after 30 secs.
+timeout 10
+
+# By default, boot the first entry.
+default 0
+
+title findchain NTLDR
+find --set-root --ignore-floppies --ignore-cd /ntldr
+chainloader /ntldr

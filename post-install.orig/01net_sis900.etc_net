@@ -1,0 +1,26 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+#. /tmp/post-install/local_variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Dirty hack
+DEVICE=eth1
+
+sed -i -e "s:@DEVICE@:$DEVICE:g" \
+    -e "s:@IPADDR@:$IPADDR:g" \
+    -e "s:@NETMASK@:$NETMASK:g" \
+    -e "s:@BROADCAST@:$BROADCAST:g" \
+    -e "s:@GATEWAY@:$GATEWAY:g" \
+    /etc/conf.d/net-
+
+#sed -i -e "s:@DOMAINNAME@:$DOMAINNAME:g" \
+#    -e "s:@DOMAINNAME@:$DOMAINNAME:g" \
+#    /etc/resolv.conf
+
+cp /tmp/post-install/resolv.conf /etc
+
+# echo "sis900" >> /etc/modules.autoload.d/kernel-2.6
+
+

@@ -1,0 +1,11 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+#. /tmp/post-install/local_variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+#sed -i -e "s:@SCR_RES@:1600x1200:g" /boot/grub1/grub.conf
+#sed -i -e "s:@SCR_RES@:1600x1200:g" /boot/grub/custom.cfg
+
+

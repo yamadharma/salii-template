@@ -1,0 +1,8 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+sed -i -e "s:root=/dev/.da. :root=LABEL=root :" /boot/grub2/grub.cfg
+

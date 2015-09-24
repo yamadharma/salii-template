@@ -1,0 +1,9 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+dd if=${DISK0} of=/netinst/mbr.img count=1 bs=512
+/ms-sys -m ${DISK0}
+

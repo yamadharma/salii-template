@@ -1,0 +1,67 @@
+#
+#  write_local_variables
+#
+# Usage: write_local_variables
+write_local_variables() {
+
+    logmsg
+    logmsg "write_local_variables"
+
+    # pass all variables set here on to the hostname.sh script
+    # rm -f /tmp/variables.txt
+
+    echo "HOSTNAME=$HOSTNAME"                   >> /tmp/variables.txt || shellout
+    echo "DOMAINNAME=$DOMAINNAME"               >> /tmp/variables.txt
+
+    echo "DEVICE=$DEVICE"                       >> /tmp/variables.txt
+    echo "IPADDR=$IPADDR"                       >> /tmp/variables.txt
+    echo "NETMASK=$NETMASK"                     >> /tmp/variables.txt
+    echo "NETWORK=$NETWORK"                     >> /tmp/variables.txt
+    echo "BROADCAST=$BROADCAST"                 >> /tmp/variables.txt
+
+    echo "GATEWAY=$GATEWAY"                     >> /tmp/variables.txt
+    echo "GATEWAYDEV=$GATEWAYDEV"               >> /tmp/variables.txt
+
+    echo "IMAGESERVER=$IMAGESERVER"             >> /tmp/variables.txt
+    echo "IMAGENAME=$IMAGENAME"                 >> /tmp/variables.txt
+    echo "DISK0=$DISK0"                         >> /tmp/variables.txt
+ 
+} # END write_local_variables
+
+disk_size ()
+{
+local DISK_SIZE
+local DISK_SIZE2
+
+PARTED_V=`parted -v | sed -e "s:GNU Parted ::"`
+
+# Get the size of the destination disk so that we can make the partitions fit properly.
+case ${PARTED_V} in
+    1.6.?)
+	DISK_SIZE=`parted -s $DISK0 print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/ //' `
+	DISK_SIZE2=`parted -s ${DISK0}2 print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/ //' `
+	;;
+    1.6.2?*)
+	DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/MB//' | sed 's/ //' `
+	DISK_SIZE2=`parted -s ${DISK0}2 unit MB print | grep 'Disk geometry for' | sed 's/^.*-//g' | sed 's/\..*$//' | sed 's/MB//' | sed 's/ //' `
+	;;	
+    *)
+	DISK_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk ' | sed 's/^.*: //g' | sed 's/MB.*$//' | sed 's/MB//' | sed 's/ //' `
+	DISK_SIZE2=`parted -s ${DISK0}2 unit MB print | grep 'Disk ' | sed 's/^.*: //g' | sed 's/MB.*$//' | sed 's/MB//' | sed 's/ //' `
+	;;	
+esac	
+
+# DISK_SIZE2=$(echo "scale=3; (($DISK_SIZE * $hda2_ps / 100))" | bc)
+
+echo "DISK_SIZE=$DISK_SIZE"		>> /tmp/variables.txt
+echo "DISK_SIZE2=$DISK_SIZE2"		>> /tmp/variables.txt
+
+}
+
+mount_pseudofs()
+{
+    mount -o bind /dev /a/dev
+    mount -o bind /sys /a/sys
+    mount -o bind /proc /a/proc
+}
+

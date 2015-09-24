@@ -1,0 +1,118 @@
+# Checking hardware profile
+check_profile ()
+{
+
+#export SFDISK_OPTIONS=
+
+case ${HOSTNAME} in
+    dk1n[456]?)
+	# export HARDWARECLASS="scenic-x102 video_sis scr_1280x1024 scr_auto"
+	# export HARDWARE_OPT="--exclude=/usr/share/doc/*"
+	export HARDWARECLASS="scenic-x102 video_vesa scr_1280x1024 scr_auto"
+	export GRUB=grub1
+	export LINUX_IMAGENAME=centos6
+	;;	
+    dk2n4?)
+	export HARDWARECLASS="scenic-x102 video_vesa scr_1280x1024 scr_auto"
+	# export HARDWARE_OPT="--exclude=/usr/share/doc/*"
+	export GRUB=grub1
+	export LINUX_IMAGENAME=centos6
+	;;	
+    dk2n2?)
+	export HARDWARECLASS="ga-8i945gmf video_ati.x550 scr_1280x1024 scr_auto disk_ide"
+	export GRUB=grub1
+	export LINUX_IMAGENAME=centos6
+	;;
+    dk2n*)
+	export HARDWARECLASS="i865 net_e100 video_nvidia scr_1280x1024 scr_auto"
+	export GRUB=grub1
+	export LINUX_IMAGENAME=centos6
+	;;
+#    dk2n[45]?)
+#	export HARDWARECLASS="gem667 net_rtl8139 video_i810 scr_1024x768 monitor_greenwood"
+#	export SFDISK_OPTIONS="-H 16 -S 255 -C 19158"
+#	export HARDWARE_OPT="--exclude=/usr/share/doc/*"
+#	export GRUB=grub2
+#	export LINUX_IMAGENAME=fedora
+#	;;
+#    dk2n8?)
+#	export HARDWARECLASS="simlh net_rtl8139 video_sis650 video_sis scr_1024x768 monitor_greenwood"
+#	export HARDWARE_OPT="--exclude=/usr/share/doc/*"
+#	export LINUX_IMAGENAME=fedora
+#	;;
+#    dk2n*)
+#	export HARDWARECLASS="formoza net_sis900 video_sis scr_1024x768 scr_auto"
+#	export LINUX_IMAGENAME=fedora
+#	;;
+    dk4n00|dk6n00)
+	export HARDWARECLASS="chipset_intel net_rtl8168 video_nvidia-nonfree sound_rltk-hda scr_1280x1024_dual_nvidia-nonfree massstorage_intel5ahci"
+	export GRUB=grub2
+	;;
+    dk3n*|dk6n*|dk7n*)
+	export HARDWARECLASS="chipset_intel net_rtl8168 video_ati sound_rltk-hda scr_1280x1024 scr_auto massstorage_intel5ahci"
+	export GRUB=grub2
+	;;
+    dk4n*)
+	export HARDWARECLASS="chipset_intel net_rtl8168 video_ati sound_rltk-hda scr_1920x1080 scr_auto massstorage_intel5ahci"
+	export GRUB=grub2
+	;;
+#    dk3n7?)
+#	export HARDWARECLASS="gem667 net_3com video_i810 scr_1024x768 monitor_greenwood"
+#	export HARDWARE_OPT="--exclude=/usr/share/doc/*"
+#	export GRUB=grub1
+#	;;
+    dk5n*)
+	export HARDWARECLASS="p4titan+nvidia+21monitor video_nvidia net_e100 scr_1600x1200 scr_auto boot_win_first"
+	export GRUB=grub2
+	;;
+#    dk7n2?|dk6n2?)
+#	export HARDWARECLASS="ga-8i945gmf video_ati scr_1280x1024"
+#	export GRUB=grub2
+#	;;
+#    dk7n2?)
+#	export HARDWARECLASS="ga-8i945gmf video_ati.x550 scr_1280x1024 scr_auto disk_ide"
+#	export GRUB=grub2
+#	export LINUX_IMAGENAME=fedora
+#	;;
+#    dk7n*)
+#	export HARDWARECLASS="p4titan+nvidia+21monitor video_nvidia net_e100 scr_1600x1200"
+#	export GRUB=grub2
+#	;;
+#    dk6n*)
+#	export HARDWARECLASS="p4titan+nvidia video_nvidia net_e100 scr_1280x1024"
+#	export GRUB=grub2
+#	;;
+#    dk7n*)
+#	export HARDWARECLASS="i865 net_e100 video_nvidia scr_1280x1024 scr_auto"
+#	export GRUB=grub2
+#	export LINUX_IMAGENAME=fedora
+#	;;
+    dk116n1?)
+	# dc7800
+	export HARDWARECLASS="mb_intel sound_adihd net_e1000 video_nvidia scr_1280x1024 boot_win_first video_nvidia-setup dc7800 video_nvidia-nonfree"
+	export GRUB=grub2
+#	export NORMGRUB=1
+	export LINUX_IMAGENAME=fedora
+	;;
+    dk116n2?)
+	# dx7400
+	export HARDWARECLASS="mb_intel sound_rltk-hda net_bcm5700 video_nvidia scr_1280x1024 scr_auto boot_win_first video_nvidia-setup"
+	export GRUB=grub2
+#	export NORMGRUB=1
+	export LINUX_IMAGENAME=fedora
+	;;
+    dk284n*|dk286n*)
+	export HARDWARECLASS="net_rtl8168 video_nvidia scr_1280x1024"
+	export PARTIMAGE_NAME="dk286.partimg.gz.000"
+	;;
+    dk303n*)
+	export HARDWARECLASS="winonly net_rtl8168 video_nvidia scr_1280x1024"
+#	export HARDWARECLASS="winonly net_sis900 video_nvidia scr_1024x768"
+#	export PARTIMAGE_NAME="dk286.partimg.gz.000"
+	;;
+    *)
+	shellout
+	;;
+esac || shellout 
+
+} # END chek_profile

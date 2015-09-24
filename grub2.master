@@ -1,0 +1,221 @@
+#!/bin/sh
+#
+# SARA install script for LISA nodes: 
+# Initial Authors: Bas van der Vlies and Jaap Dijkshoorn
+#
+# SVN Info:
+#	$Id: masterscript.new 470 2012-03-08 15:02:44Z bas $
+
+# Pull in variables left behind by the linuxrc script.
+# This information is passed from the linuxrc script on the autoinstall media 
+# via /tmp/variables.txt. 
+#
+#set -x
+
+. /tmp/variables.txt
+
+# Load functions and other variables
+. /etc/init.d/functions
+
+# Load local finctions
+. ${SCRIPTS_DIR}/functions
+
+logmsg "load hardware profile"
+check_profile
+
+## Checking if we are using grub legacy or grub2.
+## if grub2 is used the disk are set with label gpt
+
+if [ "$GRUB2" == "yes" ]; then
+	DISKLABEL=gpt
+else
+	DISKLABEL=msdos
+fi
+
+get_arch
+
+NO_LISTING=yes
+if [ -z $NO_LISTING ]; then
+    VERBOSE_OPT="v"
+else
+    VERBOSE_OPT=""
+fi
+
+# Remove .master from script name
+#
+SARA_IMAGE=`echo $0 | cut -d. -f1`
+
+echo $0
+echo $IMAGENAME
+
+[ -n $LINUX_IMAGENAME ] && IMAGENAME=$LINUX_IMAGENAME
+[ -z $IMAGENAME ] && IMAGENAME=`basename $SARA_IMAGE`
+# [ -z $OVERRIDES ] && OVERRIDES=`basename $SARA_IMAGE`
+[ -z $OVERRIDES ] && OVERRIDES="etc_template $HARDWARECLASS $ROOMNAME"
+GROUP_OVERRIDES=OVERRIDES
+
+echo $IMAGENAME
+export IMAGENAME
+save_param IMAGENAME "${IMAGENAME}"
+
+## Sort disk, first disk to be found are sd* disk
+#
+disk_enumerate "sd hd vd cciss"
+
+## Begin disk creation and mounting
+# Create disk label.  This ensures that all remnants of the old label, whatever
+# type it was, are removed and that we're starting with a clean label.
+#logmsg "set_disklabel  $DISK0 $DISKLABEL"
+#set_disklabel $DISK0 $DISKLABEL
+
+#if [ "$DISKLABEL" == "msdos" ]; then
+#	logmsg "partition $DISK0 1024:ext2.128:/boot:boot 1:none 4096:swap::swap 0:xfs:/:root"
+#	partition $DISK0 1024:ext2.128:/boot:boot 4096:swap::swap 0:xfs:/:root
+#else
+#	logmsg "partition $DISK0 1024:ext2:/boot:boot 1:grub2 4096:swap::swap 0:xfs:/:root"
+#	partition $DISK0 1024:ext2:/boot:boot 1:grub2 4096:swap::swap 0:xfs:/:root
+#fi
+
+#if [ ! -z $DISK1 ]
+#then
+#	logmsg "set_disklabel  $DISK1 $DISKLABEL"
+#	set_disklabel $DISK1 $DISKLABEL
+#
+#	logmsg "partition $DISK1 0:xfs:/scratch:scratch"
+#	partition $DISK1 0:xfs:/scratch:scratch
+#fi
+
+logmsg "format linux partitions"
+#create_filesystem ${DISK0}4 ext2 boot
+#create_filesystem ${DISK0}5 ext4 root
+#create_filesystem ${DISK0}6 swap swap
+#create_filesystem ${DISK0}2 ext4 afscache
+
+logmsg "mount points"
+create_disk_mount_file 0 / ext4 ${DISK0}5
+create_disk_mount_file 0 /boot ext2 ${DISK0}4
+create_disk_mount_file 0 /var/cache/openafs ext4 ${DISK0}2
+
+logmsg "swapon ${DISK0}6"
+swapon ${DISK0}6
+
+logmsg "mount_disks"
+mount_disks
+
+## End disk creation and mounting
+
+write_local_variables
+disk_size
+
+
+### BEGIN mount proc in image for tools like System Configurator ###
+### BEGIN mount sysfs in image for tools that might be run during chroot ### 
+logmsg "chroot_mount_system_fs"
+chroot_mount_system_fs
+### END mount proc in image for tools like System Configurator ###
+### END mount sysfs in image for tools that might be run during chroot ### 
+
+################################################################################
+#
+#   Lay the image down on the freshly formatted disk(s)
+#
+#if [ ! -z $MONITOR_SERVER ]; then
+#    start_report_task
+#fi
+
+## Let's get the image
+# TODO: rewrite this so we can use PROTOCOL instead of using BITTORRENT yes/no
+logmsg "getimage"
+#getimage
+
+#logmsg "getimage webc"
+#MAIN_IMAGENAME=$IMAGENAME
+#IMAGENAME=webc
+#getimage
+#IMAGENAME=$MAIN_IMAGENAME
+
+# Leave notice of which image is installed on the client
+echo $IMAGENAME > /a/root/IMAGE_LAST_SYNCED_TO || shellout
+
+################################################################################
+#
+#   Process override directories
+#
+for OVERRIDE in $OVERRIDES
+do
+    mountpoint=/a
+    # Use rsync
+    logmsg "rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/"
+    rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+done
+
+
+#if [ "$GRUB2" == "yes" ]
+#then
+#	grub2_install $DISK0
+#fi
+
+mount_pseudofs
+
+if [[ $GRUB == grub1 ]]
+then
+    grub1_install
+else
+    grub2_install_local $DISK0
+fi
+
+
+#
+################################################################################
+
+
+################################################################################
+#
+#   Post Install Scripts
+#
+
+run_post_install_scripts
+
+#
+################################################################################
+
+
+################################################################################
+#
+#   Save virtual console session in the imaged client
+#
+if [ ! -z $MONITOR_SERVER ]; then
+    if [ "x$MONITOR_CONSOLE" = "xyes" ]; then 
+        [ ! -d /a/root ] && mkdir -p /a/root
+        cp -f /var/log/sali.log /a/root/sali.log
+    fi
+fi
+
+#
+################################################################################
+
+################################################################################
+#
+#   Unmount filesystems
+#
+
+logmsg "chroot_umount_system_fs"
+chroot_umount_system_fs
+
+logmsg "umount_disks"
+umount_disks
+
+#
+################################################################################
+
+
+################################################################################
+#
+#   Tell the image server we are done
+#   
+rsync $IMAGESERVER::scripts/imaging_complete > /dev/null 2>&1
+logmsg "Imaging completed"
+#
+################################################################################
+
+reboot

@@ -1,0 +1,29 @@
+#!/bin/sh
+
+. /tmp/post-install/variables.txt
+#. /tmp/post-install/local_variables.txt
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+sed -i -e "s:@HOSTNAME@:$HOSTNAME:g" /etc/conf.d/hostname
+sed -i -e "s:@HOSTNAME@:$HOSTNAME:g" /etc/hostname
+
+#rm /boot/grub1/grub.conf
+#cat /boot/grub1/grub.[0-9][0-9] >> /boot/grub/grub.conf
+#rm -f /boot/grub1/grub.[0-9][0-9]
+
+# Hack for 2.6.22 kernel
+#export DISK0=`echo $DISK0 | sed -e "s:sda:hda:"`
+
+#sed -i -e "s:@DISK0@:$DISK0:g" /etc/fstab
+#sed -i -e "s:@DISK0@:$DISK0:g" /boot/grub/grub.conf
+
+# Hack for 2.6.22 kernel
+# sed -i -e "s:sda:hda:g" /etc/fstab
+# sed -i -e "s:sda:hda:g" /boot/grub/grub.conf
+
+# AFS cache size
+# export AFS_CACHE_SIZE=$(echo "scale=0; (($DISK_SIZE2 * 910 * 1000 / 1000))" | bc)
+export AFS_CACHE_SIZE=$(echo "scale=0; (($DISK_SIZE2 * 910))" | bc)
+sed -i -e "s:@AFS_CACHE_SIZE@:$AFS_CACHE_SIZE:g" /etc/openafs/cacheinfo
+
