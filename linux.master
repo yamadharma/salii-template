@@ -23,14 +23,29 @@
 logmsg "load hardware profile"
 check_profile
 
+
 ## Checking if we are using grub legacy or grub2.
 ## if grub2 is used the disk are set with label gpt
 
-if [ "$GRUB2" == "yes" ]; then
+#if [ "$GRUB2" == "yes" ]; then
+#	DISKLABEL=gpt
+#else
+#	DISKLABEL=msdos
+#fi
+
+if [ "$DISKLABEL" == "gpt" ]; then
 	DISKLABEL=gpt
 else
 	DISKLABEL=msdos
 fi
+
+if [ "$UEFI" == "yes" ]; then
+	DISKLABEL=gpt
+else
+	DISKLABEL=msdos
+fi
+
+
 
 get_arch
 
@@ -62,19 +77,35 @@ save_param IMAGENAME "${IMAGENAME}"
 #
 disk_enumerate "sd hd vd cciss"
 
+if [ "$PARTITIONING"=="yes" ]
+then
+
+set_partitioning
+DISK0_SIZE=$(get_disksize $DISK0)
+# boot_size=$(( $DISK0_SIZE * $boot_ps / 100 ))
+boot_size=1024
+swap_size=$(( $DISK0_SIZE * $swap_ps / 100 ))
+windows_size=$(( $DISK0_SIZE * $windows_ps / 100 ))
+afscache_size=$(( $DISK0_SIZE * $afscache_ps / 100 ))
+
 ## Begin disk creation and mounting
 # Create disk label.  This ensures that all remnants of the old label, whatever
 # type it was, are removed and that we're starting with a clean label.
-#logmsg "set_disklabel  $DISK0 $DISKLABEL"
-#set_disklabel $DISK0 $DISKLABEL
+logmsg "set_disklabel  $DISK0 $DISKLABEL"
+set_disklabel $DISK0 $DISKLABEL
 
-#if [ "$DISKLABEL" == "msdos" ]; then
-#	logmsg "partition $DISK0 1024:ext2.128:/boot:boot 1:none 4096:swap::swap 0:xfs:/:root"
+if [ "$DISKLABEL" == "msdos" ]; then
+	logmsg "partition $DISK0 1024:ext2.128:/boot:boot 1:none 4096:swap::swap 0:xfs:/:root"
 #	partition $DISK0 1024:ext2.128:/boot:boot 4096:swap::swap 0:xfs:/:root
-#else
-#	logmsg "partition $DISK0 1024:ext2:/boot:boot 1:grub2 4096:swap::swap 0:xfs:/:root"
+	partition $DISK0 $windows_size:ext4::windows $boot_size:ext2.128:/boot:boot 10240:ext4::windistro $afscache_size:ext4:/var/cache/openafs:afscache $swap_size:swap::swap 0:ext4:/:root
+else
+	logmsg "partition $DISK0 1024:ext2:/boot:boot 1:grub2 4096:swap::swap 0:xfs:/:root"
 #	partition $DISK0 1024:ext2:/boot:boot 1:grub2 4096:swap::swap 0:xfs:/:root
-#fi
+	partition $DISK0 $boot_size:ext2:/boot:boot 1:grub2 $windows_size:ext2::windows $swap_size:swap::swap $afscache_size:ext4:/var/cache/openafs:afscache  0:ext4:/:root
+
+	parted -s $DISK0 set 1 boot on
+
+fi
 
 #if [ ! -z $DISK1 ]
 #then
@@ -85,19 +116,26 @@ disk_enumerate "sd hd vd cciss"
 #	partition $DISK1 0:xfs:/scratch:scratch
 #fi
 
+else # "$PARTITIONING"=="no"
+
+if [ "$DISKLABEL" == "msdos" ]; then
 logmsg "format linux partitions"
-create_filesystem ${DISK0}4 ext2 boot
-create_filesystem ${DISK0}5 ext4 root
-create_filesystem ${DISK0}6 swap swap
-create_filesystem ${DISK0}2 ext4 afscache
+create_filesystem ${DISK0}2 ext2.128 boot
+create_filesystem ${DISK0}8 ext4 root
+create_filesystem ${DISK0}7 swap swap
+create_filesystem ${DISK0}6 ext4 afscache
 
 logmsg "mount points"
-create_disk_mount_file 0 / ext4 ${DISK0}5
-create_disk_mount_file 0 /boot ext2 ${DISK0}4
-create_disk_mount_file 0 /var/cache/openafs ext4 ${DISK0}2
+create_disk_mount_file 0 / ext4 ${DISK0}8
+create_disk_mount_file 0 /boot ext2 ${DISK0}2
+create_disk_mount_file 0 /var/cache/openafs ext4 ${DISK0}6
 
-logmsg "swapon ${DISK0}6"
+logmsg "swapon ${DISK0}7"
 swapon ${DISK0}6
+fi
+
+
+fi
 
 logmsg "mount_disks"
 mount_disks
@@ -162,6 +200,7 @@ then
     grub1_install
 else
     grub2_install_local $DISK0
+#    grub2_install $DISK0
 fi
 
 

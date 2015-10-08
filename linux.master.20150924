@@ -86,18 +86,18 @@ disk_enumerate "sd hd vd cciss"
 #fi
 
 logmsg "format linux partitions"
-#create_filesystem ${DISK0}4 ext2 boot
-#create_filesystem ${DISK0}5 ext4 root
-#create_filesystem ${DISK0}6 swap swap
-#create_filesystem ${DISK0}2 ext4 afscache
+create_filesystem ${DISK0}4 ext2 boot
+create_filesystem ${DISK0}5 ext4 root
+create_filesystem ${DISK0}6 swap swap
+create_filesystem ${DISK0}2 ext4 afscache
 
 logmsg "mount points"
-create_disk_mount_file 0 / ext4 ${DISK0}8
-create_disk_mount_file 0 /boot ext2 ${DISK0}2
-create_disk_mount_file 0 /var/cache/openafs ext4 ${DISK0}6
+create_disk_mount_file 0 / ext4 ${DISK0}5
+create_disk_mount_file 0 /boot ext2 ${DISK0}4
+create_disk_mount_file 0 /var/cache/openafs ext4 ${DISK0}2
 
-logmsg "swapon ${DISK0}7"
-swapon ${DISK0}7
+logmsg "swapon ${DISK0}6"
+swapon ${DISK0}6
 
 logmsg "mount_disks"
 mount_disks
@@ -126,7 +126,7 @@ chroot_mount_system_fs
 ## Let's get the image
 # TODO: rewrite this so we can use PROTOCOL instead of using BITTORRENT yes/no
 logmsg "getimage"
-#getimage
+getimage
 
 #logmsg "getimage webc"
 #MAIN_IMAGENAME=$IMAGENAME

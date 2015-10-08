@@ -1,0 +1,124 @@
+getimage_aria_bm_local(){
+    METHOD=$1
+    
+    if [ -z $IMAGENAME_LIST ]
+    then
+	getimage_aria_bm_image ${METHOD} ${IMAGENAME}
+    else
+	for i in $IMAGENAME_LIST
+	do
+	    getimage_aria_bm_image ${METHOD} ${i}
+	done
+    fi
+}
+
+getimage_aria_bm_image(){
+    
+    METHOD=$1
+    IMAGENAME_CURRENT=$2
+    
+
+    BASENAME="${TORRENTS_DIR}/image-${IMAGENAME_CURRENT}"
+
+    if [ -f "${BASENAME}.tar.gz.${METHOD}" ]
+    then
+        tarball="image-${IMAGENAME_CURRENT}.tar.gz"
+        compress="z"
+    elif [ -f "${BASENAME}.tar.${METHOD}" ]
+    then
+        tarball="image-${IMAGENAME_CURRENT}.tar"
+        compress=""
+    else
+        logmsg ""
+        logmsg "There is no ${METHOD} file available for image ${IMAGENAME_CURRENT} in directory ${TORRENTS_DIR}"
+        logmsg ""
+        shellout
+    fi
+
+    if [ -z $STAGING ]
+    then
+        logmsg "aria_autodetect_staging_dir"
+	SIZE=$(aria_getsize $METHOD ${TORRENTS_DIR}/${tarball}.${METHOD})
+	STAGING=$(aria_autodetect_staging_dir $SIZE)
+	if [ -z $STAGING ]
+	then
+	   logmsg ""
+	   logmsg "Error: Cannot find a staging directory to save file: $tarball"
+	   logmsg "Increase the size of your TMPFS or use rsync"
+	   logmsg ""
+	   shellout
+	fi
+    fi
+
+    logmsg "Starting download tarball ${tarball} via ${METHOD} to location ${STAGING}"
+
+    if [ "x$METHOD" = "xbittorrent" ]
+    then
+	logmsg "--> INFO: Don't forget to start /etc/init.d/systemimager-server-bittorrent on the image server"
+    fi
+
+    ## Get file via aria
+    aria_get_file "${TORRENTS_DIR}/${tarball}.${METHOD}" $STAGING
+
+    ## Extracting the image
+    logmsg "Extracting image from ${tarball}"
+    cd /a/ || shellout
+
+    p_comment 0 "Unpacking image file: ${STAGING}/${tarball}"
+
+    case $compress in
+	"z")
+		zcat ${STAGING}/${tarball} | tar -px${VERBOSE_GETIMAGE_OPT}f -
+	;;
+	*)
+		tar -px${VERBOSE_GETIMAGE_OPT}f ${STAGING}/${tarball}
+	;;
+    esac
+
+   rm -f ${STAGING}/${tarball}
+   unset tarball
+}
+
+getimage_local(){
+
+    logmsg ""
+    logmsg "Getting image via protocol: $PROTOCOL"
+    logmsg "" 
+   
+    ## Default VERBOSE level for getimage
+    #
+    VERBOSE_GETIMAGE_OPT=""
+
+    ## To support systemimager install script option
+    # 
+    case "$VERBOSE_OPT" in
+        "v")
+            VERBOSE_GETIMAGE_OPT="v"
+        ;;
+    esac 
+    
+    ## Set the verbose flag for the getimage command
+    #
+    if [ $VERBOSE_LEVEL -ge "256" ]
+    then  
+        VERBOSE_GETIMAGE_OPT="v"
+    fi
+
+   case "$PROTOCOL" in
+       "bittorrent")
+           getimage_aria_bm_local torrent
+       ;;
+       "metalink")
+           getimage_aria_bm_local metalink
+       ;;
+       "http"|"ftp")
+           getimage_aria_hf $URL
+       ;;
+       *)
+          export PROTOCOL=rsync
+          save_param PROTOCOL rsync
+          getimage_rsync
+       ;;
+    esac
+
+}

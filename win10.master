@@ -48,10 +48,10 @@ SARA_IMAGE=`echo $0 | cut -d. -f1`
 echo $0
 echo $IMAGENAME
 
-[ -n $LINUX_IMAGENAME ] && IMAGENAME=$LINUX_IMAGENAME
 [ -z $IMAGENAME ] && IMAGENAME=`basename $SARA_IMAGE`
+[ -z $IMAGENAME_LIST ] && export IMAGENAME_LIST="${IMAGENAME} ${IMAGENAME}_unattended"
 # [ -z $OVERRIDES ] && OVERRIDES=`basename $SARA_IMAGE`
-[ -z $OVERRIDES ] && OVERRIDES="etc_template $HARDWARECLASS $ROOMNAME"
+[ -z $OVERRIDES ] && OVERRIDES="dosfiles netinst $HARDWARECLASS $ROOMNAME"
 GROUP_OVERRIDES=OVERRIDES
 
 echo $IMAGENAME
@@ -86,21 +86,21 @@ disk_enumerate "sd hd vd cciss"
 #fi
 
 logmsg "format linux partitions"
-#create_filesystem ${DISK0}4 ext2 boot
-#create_filesystem ${DISK0}5 ext4 root
-#create_filesystem ${DISK0}6 swap swap
-#create_filesystem ${DISK0}2 ext4 afscache
+#create_filesystem ${DISK0}1 fat32 windows
+create_filesystem_win10
 
 logmsg "mount points"
-create_disk_mount_file 0 / ext4 ${DISK0}8
-create_disk_mount_file 0 /boot ext2 ${DISK0}2
-create_disk_mount_file 0 /var/cache/openafs ext4 ${DISK0}6
-
-logmsg "swapon ${DISK0}7"
-swapon ${DISK0}7
+#create_disk_mount_file 0 / fat32 ${DISK0}1
 
 logmsg "mount_disks"
-mount_disks
+#mount_disks
+mkdir /a
+mount ${DISK0}5 /a -t vfat -o iocharset=cp437
+mkdir /a/tmp
+
+mkdir /c
+mount ${DISK0}1 /c -t vfat -o iocharset=cp437
+mkdir /c/tmp
 
 ## End disk creation and mounting
 
@@ -110,8 +110,8 @@ disk_size
 
 ### BEGIN mount proc in image for tools like System Configurator ###
 ### BEGIN mount sysfs in image for tools that might be run during chroot ### 
-logmsg "chroot_mount_system_fs"
-chroot_mount_system_fs
+#logmsg "chroot_mount_system_fs"
+#chroot_mount_system_fs
 ### END mount proc in image for tools like System Configurator ###
 ### END mount sysfs in image for tools that might be run during chroot ### 
 
@@ -125,17 +125,12 @@ chroot_mount_system_fs
 
 ## Let's get the image
 # TODO: rewrite this so we can use PROTOCOL instead of using BITTORRENT yes/no
-logmsg "getimage"
-#getimage
 
-#logmsg "getimage webc"
-#MAIN_IMAGENAME=$IMAGENAME
-#IMAGENAME=webc
-#getimage
-#IMAGENAME=$MAIN_IMAGENAME
+logmsg "getimage"
+getimage_local
 
 # Leave notice of which image is installed on the client
-echo $IMAGENAME > /a/root/IMAGE_LAST_SYNCED_TO || shellout
+echo $IMAGENAME > /a/IMAGE_LAST_SYNCED_TO || shellout
 
 ################################################################################
 #
@@ -155,15 +150,7 @@ done
 #	grub2_install $DISK0
 #fi
 
-mount_pseudofs
-
-if [[ $GRUB == grub1 ]]
-then
-    grub1_install
-else
-    grub2_install_local $DISK0
-fi
-
+#mount_pseudofs
 
 #
 ################################################################################
@@ -174,11 +161,16 @@ fi
 #   Post Install Scripts
 #
 
-run_post_install_scripts
+# run_post_install_scripts
+
+unattend_prepare_win10
+boot_disk_prepare_win10
+#save_and_clean_mbr_win10
 
 #
 ################################################################################
 
+# grub2_install_local $DISK0
 
 ################################################################################
 #
@@ -199,8 +191,8 @@ fi
 #   Unmount filesystems
 #
 
-logmsg "chroot_umount_system_fs"
-chroot_umount_system_fs
+#logmsg "chroot_umount_system_fs"
+#chroot_umount_system_fs
 
 logmsg "umount_disks"
 umount_disks

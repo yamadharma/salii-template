@@ -183,6 +183,10 @@ case ${HOSTNAME} in
 	export HARDWARECLASS="chipset_intel net_rtl8168 video_nvidia-nonfree sound_rltk-hda scr_1280x1024_dual_nvidia-nonfree massstorage_intel5ahci"
 	export GRUB=grub2
 	;;
+    dk6n[34]*)
+	export HARDWARECLASS="chipset_intel video_intel scr_auto"
+	export GRUB=grub2
+	;;
     dk3n*|dk6n*|dk7n*)
 	export HARDWARECLASS="chipset_intel net_rtl8168 video_ati sound_rltk-hda scr_1280x1024 scr_auto massstorage_intel5ahci"
 	export GRUB=grub2
@@ -251,6 +255,141 @@ case ${HOSTNAME} in
 esac || shellout 
 
 } # END chek_profile
+# Set partition size
+set_partitioning ()
+{
+
+echo "HARDWARECLASS=" ${HARDWARECLASS}
+
+case ${HARDWARECLASS} in
+    vectra|old+3c509)
+	hda1_ps=97
+	hda2_ps=0
+	hda3_ps=3	
+	hda5_ps=1
+	hda6_ps=1
+	hda4_ps=1
+	;;
+    acer*)
+	hda1_ps=96
+	hda2_ps=2.5
+	hda3_ps=1	
+	hda5_ps=0.5
+	hda6_ps=0.5
+	hda4_ps=0.5
+	;;
+    *)
+	hda1_ps=35	# Windows # razbivka so 2-go sectora
+	hda2_ps=12	# AFS
+	hda3_ps=48	# Extended
+	hda5_ps=44	# root
+	hda6_ps=4	# swap	
+	hda4_ps=4	# boot
+	#
+	boot_ps=4	# boot
+	swap_ps=4	# swap
+	windows_ps=35	# windows
+	afscache_ps=10	# AFS cache
+	;;
+esac || shellout 
+
+#case ${HOSTNAME} in
+#    dk116n*)
+#	hda1_ps=30	# Windows
+#	hda2_ps=18	# Empty
+#	hda3_ps=48	# Extended
+#	hda5_ps=44	# root
+#	hda6_ps=4	# swap	
+#	hda4_ps=4	# boot
+#	;;
+#    *)
+#	hda1_ps=40	# Windows
+#	hda2_ps=8	# Empty
+	hda3_ps=48	# Extended
+#	hda5_ps=44	# root
+#	hda6_ps=4	# swap	
+#	hda4_ps=4	# boot
+#	;;
+#esac || shellout 
+
+} # END set_partitioning
+
+mount_linux() {
+
+    if [ "$LINUX_MOUNTED" == 1 ]
+    then
+	echo "Linux already mounted"
+    else
+	mkdir -p /linux
+	mount -t ext4 ${DISK0}8 /linux
+	mount -o bind /dev /linux/dev
+	mount -o bind /sys /linux/sys
+	mount -o bind /proc /linux/proc
+
+	export LINUX_MOUNTED=1
+    fi
+	
+}
+
+# Unattend prepare
+unattend_prepare_win10() {
+
+echo "sed /a/netinst/AutoUnattend.xml"
+sed -e "s:@HOSTNAME@:$HOSTNAME:g" /a/netinst/AutoUnattend.xml > /a/netinst/unattend.tmp || shellout
+cp -f /a/netinst/unattend.tmp /a/netinst/AutoUnattend.xml || shellout
+rm /a/netinst/unattend.tmp || shellout
+
+#echo "sed /a/netinst/sysprep.inf"
+#sed -e "s:@HOSTNAME@:$HOSTNAME:g" /a/netinst/sysprep.inf > /a/netinst/sysprep.tmp || shellout
+#cp -f /a/netinst/sysprep.tmp /a/netinst/sysprep.inf || shellout
+#rm /a/netinst/sysprep.tmp || shellout
+
+echo "config /netinst/AutoUnattend.xml"
+cd /a/netinst
+. /scripts/unattend-xml.sh
+
+# cp /a/netinst/sysprep.inf /a/sysprep/
+
+cd /
+
+}
+
+save_and_clean_mbr_win10 ()
+{
+    dd if=${DISK0} of=/a/netinst/mbr.img count=1 bs=512 || shellout
+    /a/ms-sys -m ${DISK0} || shellout
+}
+
+create_filesystem_win10(){
+
+    echo "Creating partition for windows on ${DISK0}:"
+    
+    mount_linux
+
+    chroot /linux /sbin/sfdisk --part-type ${DISK0} 1 0x0c
+    chroot /linux /sbin/sfdisk --part-type ${DISK0} 5 0x0c
+
+    chroot /linux /usr/sbin/mkfs.vfat -F 32 ${DISK0}1
+    chroot /linux /usr/sbin/mkfs.vfat -F 32 ${DISK0}5
+
+#    echo "parted -s -- ${DISK0} set 1 boot on || shellout"
+#    parted -s -- ${DISK0} set 1 boot on || shellout
+#    parted -s -- ${DISK0} mkfs 1 fat32 || shellout
+
+#    echo "mkdosfs -F 32 ${DISK0}1 || shellout"
+#    /scripts/bin/mkdosfs -F 32 ${DISK0}1 || shellout
+    # parted -s -- ${DISK0} resize 1
+}
+
+boot_disk_prepare_win10() {
+
+    mount_linux
+    
+    chroot /linux /usr/bin/syslinux ${DISK0}1
+
+    cp -R /a/winpe/* /c/	
+}
+
 # Unattend prepare
 
 winxp_unattend_prepare() {

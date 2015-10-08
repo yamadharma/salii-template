@@ -1,0 +1,59 @@
+# Set partition size
+set_partitioning ()
+{
+
+echo "HARDWARECLASS=" ${HARDWARECLASS}
+
+case ${HARDWARECLASS} in
+    vectra|old+3c509)
+	hda1_ps=97
+	hda2_ps=0
+	hda3_ps=3	
+	hda5_ps=1
+	hda6_ps=1
+	hda4_ps=1
+	;;
+    acer*)
+	hda1_ps=96
+	hda2_ps=2.5
+	hda3_ps=1	
+	hda5_ps=0.5
+	hda6_ps=0.5
+	hda4_ps=0.5
+	;;
+    *)
+	hda1_ps=35	# Windows # razbivka so 2-go sectora
+	hda2_ps=12	# AFS
+	hda3_ps=48	# Extended
+	hda5_ps=44	# root
+	hda6_ps=4	# swap	
+	hda4_ps=4	# boot
+	#
+	boot_ps=4	# boot
+	swap_ps=4	# swap
+	windows_ps=35	# windows
+	afscache_ps=10	# AFS cache
+	;;
+esac || shellout 
+
+#case ${HOSTNAME} in
+#    dk116n*)
+#	hda1_ps=30	# Windows
+#	hda2_ps=18	# Empty
+#	hda3_ps=48	# Extended
+#	hda5_ps=44	# root
+#	hda6_ps=4	# swap	
+#	hda4_ps=4	# boot
+#	;;
+#    *)
+#	hda1_ps=40	# Windows
+#	hda2_ps=8	# Empty
+	hda3_ps=48	# Extended
+#	hda5_ps=44	# root
+#	hda6_ps=4	# swap	
+#	hda4_ps=4	# boot
+#	;;
+#esac || shellout 
+
+} # END set_partitioning
+
