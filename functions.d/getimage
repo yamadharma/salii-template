@@ -1,24 +1,84 @@
 getimage_aria_bm_local(){
-    METHOD=$1
     
-    if [ -z $IMAGENAME_LIST ]
+    echo "getimage_aria_bm_local"
+    
+    local METHOD=$1
+    
+    if [ -z ${IMAGENAME_LIST} ]
     then
-	getimage_aria_bm_image ${METHOD} ${IMAGENAME}
+	getimage_aria_bm_image "${METHOD}" "${IMAGENAME}"
     else
-	for i in $IMAGENAME_LIST
+	for i in ${IMAGENAME_LIST}
 	do
-	    getimage_aria_bm_image ${METHOD} ${i}
+	    getimage_aria_bm_image "${METHOD}" "${i}"
 	done
     fi
 }
 
+getimage_aria_bm_image_dirty(){
+    
+    echo "getimage_aria_bm_image_dirty"    
+
+    local METHOD=$1
+    local IMAGENAME_CURRENT=$2
+    
+    echo "IMAGENAME_CURRENT=${IMAGENAME_CURRENT}"
+
+    local BASENAME="${TORRENTS_DIR}/image-${IMAGENAME_CURRENT}"
+    local tarball="image-${IMAGENAME_CURRENT}.tar.gz"
+
+    if [ -f "${BASENAME}.tar.gz.${METHOD}" ]
+    then
+        tarball="image-${IMAGENAME_CURRENT}.tar.gz"
+        compress="z"
+    elif [ -f "${BASENAME}.tar.${METHOD}" ]
+    then
+        tarball="image-${IMAGENAME_CURRENT}.tar"
+        compress=""
+    else
+        logmsg ""
+        logmsg "There is no ${METHOD} file available for image ${IMAGENAME_CURRENT} in directory ${TORRENTS_DIR}"
+        logmsg ""
+        shellout
+    fi
+
+    logmsg "Starting download tarball ${tarball} via ${METHOD} to location ${STAGING}"
+
+    ## Get file via aria
+
+    logmsg "/usr/bin/aria2c --enable-rpc --human-readable=false --dir $STAGING ${TORRENTS_DIR}/${tarball}.${METHOD}"
+    /usr/bin/aria2c --enable-rpc --human-readable=false --dir $STAGING "${TORRENTS_DIR}/${tarball}.${METHOD}" &> /tmp/aria.log &
+
+    ## Extracting the image
+    logmsg "Extracting image from ${tarball}"
+    cd /a/ || shellout
+
+    p_comment 0 "Unpacking image file: ${STAGING}/${tarball}"
+
+    case $compress in
+	"z")
+		zcat ${STAGING}/${tarball} | tar -px${VERBOSE_GETIMAGE_OPT}f -
+	;;
+	*)
+		tar -px${VERBOSE_GETIMAGE_OPT}f ${STAGING}/${tarball}
+	;;
+    esac
+
+   rm -f ${STAGING}/${tarball}
+}
+
 getimage_aria_bm_image(){
     
-    METHOD=$1
-    IMAGENAME_CURRENT=$2
+    local METHOD=$1
+    local IMAGENAME_CURRENT=$2
     
+    echo "IMAGENAME_CURRENT=${IMAGENAME_CURRENT}"
 
-    BASENAME="${TORRENTS_DIR}/image-${IMAGENAME_CURRENT}"
+    local BASENAME="${TORRENTS_DIR}/image-${IMAGENAME_CURRENT}"
+
+    killall -9 aria2c
+    killall -9 aria2c
+    killall -9 aria2c
 
     if [ -f "${BASENAME}.tar.gz.${METHOD}" ]
     then

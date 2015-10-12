@@ -27,9 +27,9 @@ check_profile
 ## if grub2 is used the disk are set with label gpt
 
 if [ "$GRUB2" == "yes" ]; then
-	DISKLABEL=gpt
+    DISKLABEL=gpt
 else
-	DISKLABEL=msdos
+    DISKLABEL=msdos
 fi
 
 get_arch
@@ -49,7 +49,8 @@ echo $0
 echo $IMAGENAME
 
 [ -z $IMAGENAME ] && IMAGENAME=`basename $SARA_IMAGE`
-[ -z $IMAGENAME_LIST ] && export IMAGENAME_LIST="${IMAGENAME} ${IMAGENAME}_unattended"
+[ -z $IMAGENAME_LIST ] && IMAGENAME_LIST="${IMAGENAME} ${IMAGENAME}_unattended"
+#[ -z $IMAGENAME_LIST ] && IMAGENAME_LIST="webc ${IMAGENAME}_unattended"
 # [ -z $OVERRIDES ] && OVERRIDES=`basename $SARA_IMAGE`
 [ -z $OVERRIDES ] && OVERRIDES="dosfiles netinst $HARDWARECLASS $ROOMNAME"
 GROUP_OVERRIDES=OVERRIDES
@@ -57,6 +58,10 @@ GROUP_OVERRIDES=OVERRIDES
 echo $IMAGENAME
 export IMAGENAME
 save_param IMAGENAME "${IMAGENAME}"
+
+echo $IMAGENAME_LIST
+export IMAGENAME_LIST
+save_param IMAGENAME_LIST "${IMAGENAME_LIST}"
 
 ## Sort disk, first disk to be found are sd* disk
 #
@@ -126,7 +131,7 @@ disk_size
 ## Let's get the image
 # TODO: rewrite this so we can use PROTOCOL instead of using BITTORRENT yes/no
 
-logmsg "getimage"
+logmsg "getimage_local"
 getimage_local
 
 # Leave notice of which image is installed on the client
@@ -144,6 +149,28 @@ do
     rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
 done
 
+#for i in ${IMAGENAME_LIST}
+#do
+
+#killall -9 aria2c
+#killall -9 aria2c
+#killall -9 aria2c
+
+#logmsg "/usr/bin/aria2c --enable-rpc --human-readable=false --dir /a ${TORRENTS_DIR}/image-${i}.tar.gz.torrent"
+#/usr/bin/aria2c --enable-rpc --human-readable=false --dir /a ${TORRENTS_DIR}/image-${i}.tar.gz.torrent --seed-time=1
+
+#killall -9 aria2c
+#killall -9 aria2c
+#killall -9 aria2c
+
+#logmsg "Extracting image from image-${i}.tar.gz"
+#cd /a/
+#zcat /a/image-${i}.tar.gz | tar -pxf -
+#rm -f /a/image-${i}.tar.gz
+
+# Leave notice of which image is installed on the client
+#echo ${i} >> /a/IMAGE_LAST_SYNCED_TO || shellout
+#done
 
 #if [ "$GRUB2" == "yes" ]
 #then
