@@ -49,7 +49,7 @@ echo $0
 echo $IMAGENAME
 
 [ -z $IMAGENAME ] && IMAGENAME=`basename $SARA_IMAGE`
-[ -z $IMAGENAME_LIST ] && IMAGENAME_LIST="${IMAGENAME} ${IMAGENAME}_unattended"
+[ -z $IMAGENAME_LIST ] && IMAGENAME_LIST="${IMAGENAME}-${ARCH} ${IMAGENAME}_unattended win-${ARCH}_unattended"
 #[ -z $IMAGENAME_LIST ] && IMAGENAME_LIST="webc ${IMAGENAME}_unattended"
 # [ -z $OVERRIDES ] && OVERRIDES=`basename $SARA_IMAGE`
 [ -z $OVERRIDES ] && OVERRIDES="dosfiles netinst $HARDWARECLASS $ROOMNAME"
@@ -192,7 +192,7 @@ done
 
 unattend_prepare_win10
 boot_disk_prepare_win10
-#save_and_clean_mbr_win10
+save_and_clean_mbr_win10
 
 #
 ################################################################################

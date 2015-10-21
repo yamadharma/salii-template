@@ -43,7 +43,7 @@ cd /
 save_and_clean_mbr_win10 ()
 {
     dd if=${DISK0} of=/a/netinst/mbr.img count=1 bs=446 || shellout
-    dd if=/dev/zero of=${DISK0} bs=446 count=1
+#    dd if=/dev/zero of=${DISK0} bs=446 count=1
 #    /a/ms-sys -m ${DISK0} || shellout
 }
 

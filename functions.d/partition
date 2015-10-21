@@ -33,6 +33,7 @@ case ${HARDWARECLASS} in
 	swap_ps=4	# swap
 	windows_ps=35	# windows
 	afscache_ps=10	# AFS cache
+	root_ps=46	# root
 	;;
 esac || shellout 
 
