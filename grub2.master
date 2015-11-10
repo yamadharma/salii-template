@@ -23,14 +23,7 @@
 logmsg "load hardware profile"
 check_profile
 
-## Checking if we are using grub legacy or grub2.
-## if grub2 is used the disk are set with label gpt
-
-if [ "$GRUB2" == "yes" ]; then
-	DISKLABEL=gpt
-else
-	DISKLABEL=msdos
-fi
+set_disklabel_type
 
 get_arch
 
@@ -62,6 +55,8 @@ save_param IMAGENAME "${IMAGENAME}"
 #
 disk_enumerate "sd hd vd cciss"
 
+set_partition_numbers
+
 ## Begin disk creation and mounting
 # Create disk label.  This ensures that all remnants of the old label, whatever
 # type it was, are removed and that we're starting with a clean label.
@@ -92,12 +87,12 @@ logmsg "format linux partitions"
 #create_filesystem ${DISK0}2 ext4 afscache
 
 logmsg "mount points"
-create_disk_mount_file 0 / ext4 ${DISK0}8
-create_disk_mount_file 0 /boot ext2 ${DISK0}2
-create_disk_mount_file 0 /var/cache/openafs ext4 ${DISK0}6
+create_disk_mount_file 0 / ext4 ${DISK0}${root_pn}
+create_disk_mount_file 0 /boot ext4 ${DISK0}${boot_pn}
+create_disk_mount_file 0 /var/cache/openafs ext4 ${DISK0}${afscache_pn}
 
-logmsg "swapon ${DISK0}7"
-swapon ${DISK0}7
+logmsg "swapon ${DISK0}${swap_pn}"
+swapon ${DISK0}${swap_pn}
 
 logmsg "mount_disks"
 mount_disks
@@ -125,7 +120,7 @@ chroot_mount_system_fs
 
 ## Let's get the image
 # TODO: rewrite this so we can use PROTOCOL instead of using BITTORRENT yes/no
-logmsg "getimage"
+#logmsg "getimage"
 #getimage
 
 #logmsg "getimage webc"
@@ -135,19 +130,19 @@ logmsg "getimage"
 #IMAGENAME=$MAIN_IMAGENAME
 
 # Leave notice of which image is installed on the client
-echo $IMAGENAME > /a/root/IMAGE_LAST_SYNCED_TO || shellout
+#echo $IMAGENAME > /a/root/IMAGE_LAST_SYNCED_TO || shellout
 
 ################################################################################
 #
 #   Process override directories
 #
-for OVERRIDE in $OVERRIDES
-do
-    mountpoint=/a
-    # Use rsync
-    logmsg "rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/"
-    rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
-done
+#for OVERRIDE in $OVERRIDES
+#do
+#    mountpoint=/a
+#    # Use rsync
+#    logmsg "rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/"
+#    rsync -av --numeric-ids $IMAGESERVER::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+#done
 
 
 #if [ "$GRUB2" == "yes" ]

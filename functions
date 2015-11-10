@@ -481,6 +481,7 @@ disks_part() {
     mkdir -p /var/cache/mounts
     echo "$MOUNTPOINT ${DISK}${PART_NUM} $TYPE" >> /var/cache/mounts
 }
+# -*- mode:shell-script -*-
 #
 #  write_local_variables
 #
@@ -548,6 +549,7 @@ mount_pseudofs()
     mount -o bind /proc /a/proc
 }
 
+# -*- mode:shell-script -*-
 getimage_aria_bm_local(){
     
     echo "getimage_aria_bm_local"
@@ -732,6 +734,7 @@ getimage_local(){
     esac
 
 }
+# -*- mode:shell-script -*-
 grub2_install_local()
 {
     chroot_mount_system_fs
@@ -799,132 +802,85 @@ quit
 EOL
 } # END grub1_install
 
+# -*- mode:shell-script -*-
 # Checking hardware profile
 check_profile ()
 {
 
 #export SFDISK_OPTIONS=
 
-case ${HOSTNAME} in
-    dk1n[456]?)
-	# export HARDWARECLASS="scenic-x102 video_sis scr_1280x1024 scr_auto"
-	# export HARDWARE_OPT="--exclude=/usr/share/doc/*"
-	export HARDWARECLASS="scenic-x102 video_vesa scr_1280x1024 scr_auto"
-	export GRUB=grub1
-	export LINUX_IMAGENAME=centos6
-	;;	
-    dk2n4?)
-	export HARDWARECLASS="scenic-x102 video_vesa scr_1280x1024 scr_auto"
-	# export HARDWARE_OPT="--exclude=/usr/share/doc/*"
-	export GRUB=grub1
-	export LINUX_IMAGENAME=centos6
-	;;	
-    dk2n2?)
-	export HARDWARECLASS="ga-8i945gmf video_ati.x550 scr_1280x1024 scr_auto disk_ide"
-	export GRUB=grub1
-	export LINUX_IMAGENAME=centos6
-	;;
-    dk2n*)
-	export HARDWARECLASS="i865 net_e100 video_nvidia scr_1280x1024 scr_auto"
-	export GRUB=grub1
-	export LINUX_IMAGENAME=centos6
-	;;
-#    dk2n[45]?)
-#	export HARDWARECLASS="gem667 net_rtl8139 video_i810 scr_1024x768 monitor_greenwood"
-#	export SFDISK_OPTIONS="-H 16 -S 255 -C 19158"
-#	export HARDWARE_OPT="--exclude=/usr/share/doc/*"
-#	export GRUB=grub2
-#	export LINUX_IMAGENAME=fedora
-#	;;
-#    dk2n8?)
-#	export HARDWARECLASS="simlh net_rtl8139 video_sis650 video_sis scr_1024x768 monitor_greenwood"
-#	export HARDWARE_OPT="--exclude=/usr/share/doc/*"
-#	export LINUX_IMAGENAME=fedora
-#	;;
-#    dk2n*)
-#	export HARDWARECLASS="formoza net_sis900 video_sis scr_1024x768 scr_auto"
-#	export LINUX_IMAGENAME=fedora
-#	;;
-    dk4n00|dk6n00)
-	export HARDWARECLASS="chipset_intel net_rtl8168 video_nvidia-nonfree sound_rltk-hda scr_1280x1024_dual_nvidia-nonfree massstorage_intel5ahci"
-	export GRUB=grub2
-	;;
-    dk6n[34]*)
-	export HARDWARECLASS="chipset_intel video_intel scr_auto"
-	export GRUB=grub2
-	;;
-    dk3n*|dk6n*|dk7n*)
-	export HARDWARECLASS="chipset_intel net_rtl8168 video_ati sound_rltk-hda scr_1280x1024 scr_auto massstorage_intel5ahci"
-	export GRUB=grub2
-	;;
-    dk4n*)
-	export HARDWARECLASS="chipset_intel net_rtl8168 video_ati sound_rltk-hda scr_1920x1080 scr_auto massstorage_intel5ahci"
-	export GRUB=grub2
-	;;
-#    dk3n7?)
-#	export HARDWARECLASS="gem667 net_3com video_i810 scr_1024x768 monitor_greenwood"
-#	export HARDWARE_OPT="--exclude=/usr/share/doc/*"
-#	export GRUB=grub1
-#	;;
-    dk5n*)
-	export HARDWARECLASS="p4titan+nvidia+21monitor video_nvidia net_e100 scr_1600x1200 scr_auto boot_win_first"
-	export GRUB=grub2
-	;;
-#    dk7n2?|dk6n2?)
-#	export HARDWARECLASS="ga-8i945gmf video_ati scr_1280x1024"
-#	export GRUB=grub2
-#	;;
-#    dk7n2?)
-#	export HARDWARECLASS="ga-8i945gmf video_ati.x550 scr_1280x1024 scr_auto disk_ide"
-#	export GRUB=grub2
-#	export LINUX_IMAGENAME=fedora
-#	;;
-#    dk7n*)
-#	export HARDWARECLASS="p4titan+nvidia+21monitor video_nvidia net_e100 scr_1600x1200"
-#	export GRUB=grub2
-#	;;
-#    dk6n*)
-#	export HARDWARECLASS="p4titan+nvidia video_nvidia net_e100 scr_1280x1024"
-#	export GRUB=grub2
-#	;;
-#    dk7n*)
-#	export HARDWARECLASS="i865 net_e100 video_nvidia scr_1280x1024 scr_auto"
-#	export GRUB=grub2
-#	export LINUX_IMAGENAME=fedora
-#	;;
-    dk116n1?)
-	# dc7800
-	export HARDWARECLASS="mb_intel sound_adihd net_e1000 video_nvidia scr_1280x1024 boot_win_first video_nvidia-setup dc7800 video_nvidia-nonfree"
-	export GRUB=grub2
-#	export NORMGRUB=1
-	export LINUX_IMAGENAME=fedora
-	;;
-    dk116n2?)
-	# dx7400
-	export HARDWARECLASS="mb_intel sound_rltk-hda net_bcm5700 video_nvidia scr_1280x1024 scr_auto boot_win_first video_nvidia-setup"
-	export GRUB=grub2
-#	export NORMGRUB=1
-	export LINUX_IMAGENAME=fedora
-	;;
-    dk284n*|dk286n*)
-	export HARDWARECLASS="net_rtl8168 video_nvidia scr_1280x1024"
-	export PARTIMAGE_NAME="dk286.partimg.gz.000"
-	;;
-    dk303n*)
-	export HARDWARECLASS="winonly net_rtl8168 video_nvidia scr_1280x1024"
-#	export HARDWARECLASS="winonly net_sis900 video_nvidia scr_1024x768"
-#	export PARTIMAGE_NAME="dk286.partimg.gz.000"
-	;;
-    *)
-	shellout
-	;;
-esac || shellout 
-
+    case ${HOSTNAME} in
+	dk1n[456]?)
+	    export HARDWARECLASS="scenic-x102 video_vesa scr_1280x1024 scr_auto"
+	    export GRUB=grub1
+	    export LINUX_IMAGENAME=centos6
+	    ;;	
+	dk2n4?)
+	    export HARDWARECLASS="scenic-x102 video_vesa scr_1280x1024 scr_auto"
+	    # export HARDWARE_OPT="--exclude=/usr/share/doc/*"
+	    export GRUB=grub1
+	    export LINUX_IMAGENAME=centos6
+	    ;;	
+	dk2n2?)
+	    export HARDWARECLASS="ga-8i945gmf video_ati.x550 scr_1280x1024 scr_auto disk_ide"
+	    export GRUB=grub1
+	    export LINUX_IMAGENAME=centos6
+	    ;;
+	dk2n*)
+	    export HARDWARECLASS="i865 net_e100 video_nvidia scr_1280x1024 scr_auto"
+	    export GRUB=grub1
+	    export LINUX_IMAGENAME=centos6
+	    ;;
+	dk4n00|dk6n00)
+	    export HARDWARECLASS="chipset_intel net_rtl8168 video_nvidia-nonfree sound_rltk-hda scr_1280x1024_dual_nvidia-nonfree massstorage_intel5ahci"
+	    export GRUB=grub2
+	    ;;
+	dk6n[34]*)
+	    export HARDWARECLASS="chipset_intel video_intel scr_auto"
+	    export GRUB=grub2
+	    # export DISKLABEL=gpt
+	    ;;
+	dk3n*|dk6n*|dk7n*)
+	    export HARDWARECLASS="chipset_intel net_rtl8168 video_ati sound_rltk-hda scr_1280x1024 scr_auto massstorage_intel5ahci"
+	    export GRUB=grub2
+	    ;;
+	dk4n*)
+	    export HARDWARECLASS="chipset_intel net_rtl8168 video_ati sound_rltk-hda scr_1920x1080 scr_auto massstorage_intel5ahci"
+	    export GRUB=grub2
+	    ;;
+	dk5n*)
+	    export HARDWARECLASS="p4titan+nvidia+21monitor video_nvidia net_e100 scr_1600x1200 scr_auto boot_win_first"
+	    export GRUB=grub2
+	    ;;
+	dk116n1?)
+	    # dc7800
+	    export HARDWARECLASS="mb_intel sound_adihd net_e1000 video_nvidia scr_1280x1024 boot_win_first video_nvidia-setup dc7800 video_nvidia-nonfree"
+	    export GRUB=grub2
+	    export LINUX_IMAGENAME=fedora
+	    ;;
+	dk116n2?)
+	    # dx7400
+	    export HARDWARECLASS="mb_intel sound_rltk-hda net_bcm5700 video_nvidia scr_1280x1024 scr_auto boot_win_first video_nvidia-setup"
+	    export GRUB=grub2
+	    export LINUX_IMAGENAME=fedora
+	    ;;
+	dk284n*|dk286n*)
+	    export HARDWARECLASS="net_rtl8168 video_nvidia scr_1280x1024"
+	    export PARTIMAGE_NAME="dk286.partimg.gz.000"
+	    ;;
+	dk303n*)
+	    export HARDWARECLASS="winonly net_rtl8168 video_nvidia scr_1280x1024"
+	    ;;
+	*)
+	    shellout
+	    ;;
+    esac || shellout 
+    
 } # END chek_profile
+# -*- mode:shell-script -*-
 # Set partition size
 set_partitioning ()
 {
-
 echo "HARDWARECLASS=" ${HARDWARECLASS}
 
 case ${HARDWARECLASS} in
@@ -981,85 +937,135 @@ esac || shellout
 
 } # END set_partitioning
 
-mount_linux() {
+set_partition_numbers()
+{
+    if [ "$DISKLABEL" == "msdos" ]
+    then
+	windows_pn=1
+	boot_pn=2
+	windistro_pn=5
+	afscache_pn=6
+	swap_pn=7
+	root_pn=8
+    else # "$DISKLABEL" == "gpt"
+	if [ "$UEFI" == "yes" ]
+	then
+	    uefi_pn=1
+	    windows_pn=2
+	    boot_pn=3
+	    windistro_pn=4
+	    afscache_pn=5
+	    swap_pn=6
+	    root_pn=7
+	else
+	    windows_pn=1
+	    boot_pn=2
+	    windistro_pn=4
+	    afscache_pn=5
+	    swap_pn=6
+	    root_pn=7
+	fi
+    fi
+}
 
+set_disklabel_type()
+{
+    if [ "$DISKLABEL" == "gpt" ]; then
+	DISKLABEL=gpt
+    else
+	DISKLABEL=msdos
+    fi
+    
+    if [ "$UEFI" == "yes" ]; then
+	DISKLABEL=gpt
+    fi
+}
+# -*- mode:shell-script -*-
+
+# Mount linux partitions
+mount_linux() {
     if [ "$LINUX_MOUNTED" == "1" ]
     then
 	echo "Linux already mounted"
     else
 	mkdir -p /linux
-	mount -t ext4 ${DISK0}8 /linux
+	mount -t ext4 ${DISK0}${root_pn} /linux
 	mount -o bind /dev /linux/dev
 	mount -o bind /sys /linux/sys
 	mount -o bind /proc /linux/proc
-
+	mount -o bind /run /linux/run
+	
 	export LINUX_MOUNTED="1"
     fi
-	
 }
 
 # Unattend prepare
 unattend_prepare_win10() {
-
-echo "sed /a/netinst/AutoUnattend.xml"
-sed -e "s:@HOSTNAME@:$HOSTNAME:g" /a/netinst/AutoUnattend.xml > /a/netinst/unattend.tmp || shellout
-cp -f /a/netinst/unattend.tmp /a/netinst/AutoUnattend.xml || shellout
-rm /a/netinst/unattend.tmp || shellout
-
-#echo "sed /a/netinst/sysprep.inf"
-#sed -e "s:@HOSTNAME@:$HOSTNAME:g" /a/netinst/sysprep.inf > /a/netinst/sysprep.tmp || shellout
-#cp -f /a/netinst/sysprep.tmp /a/netinst/sysprep.inf || shellout
-#rm /a/netinst/sysprep.tmp || shellout
-
-echo "config /netinst/AutoUnattend.xml"
-cd /a/netinst
-. /scripts/unattend-xml.sh
-
-# cp /a/netinst/sysprep.inf /a/sysprep/
-
-mv /a/unattended/* /a/
-
-cd /
-
+    
+    echo "sed /a/netinst/AutoUnattend.xml"
+    sed -e "s:@HOSTNAME@:$HOSTNAME:g" /a/netinst/AutoUnattend.xml > /a/netinst/unattend.tmp || shellout
+    cp -f /a/netinst/unattend.tmp /a/netinst/AutoUnattend.xml || shellout
+    rm /a/netinst/unattend.tmp || shellout
+    
+    echo "config /netinst/AutoUnattend.xml"
+    cd /a/netinst
+    . /scripts/unattend-xml.sh
+ 
+    mv /a/unattended/* /a/
+    
+    cd /
 }
 
 save_and_clean_mbr_win10 ()
 {
+    mount_linux	
     dd if=${DISK0} of=/a/netinst/mbr.img count=1 bs=446 || shellout
-#    dd if=/dev/zero of=${DISK0} bs=446 count=1
-#    /a/ms-sys -m ${DISK0} || shellout
+    # dd if=/dev/zero of=${DISK0} bs=446 count=1
+    chroot /linux /usr/bin/ms-sys -7 ${DISK0} || shellout
 }
 
 create_filesystem_win10(){
-
+    
     echo "Creating partition for windows on ${DISK0}:"
     
     mount_linux
 
-    chroot /linux /sbin/sfdisk --part-type ${DISK0} 1 0x0c
-    chroot /linux /sbin/sfdisk --part-type ${DISK0} 5 0x0c
+    if [ "$DISKLABEL" == "msdos" ]                                                                                                                                                           
+    then                                                                                                                                                                                     
+	chroot /linux /sbin/sfdisk --part-type ${DISK0} ${windows_pn} 0x0c
+	chroot /linux /sbin/sfdisk --part-type ${DISK0} ${windistro_pn} 0x0c
+    else # "$DISKLABEL" == "gpt"
+	chroot /linux /usr/sbin/sgdisk --typecode=${windows_pn}:0x0700 ${DISK0}
+	chroot /linux /usr/sbin/sgdisk --typecode=${windistro_pn}:0x0700 ${DISK0}
 
-    chroot /linux /usr/sbin/mkfs.vfat -F 32 ${DISK0}1
-    chroot /linux /usr/sbin/mkfs.vfat -F 32 ${DISK0}5
+	chroot /linux /usr/sbin/sgdisk --typecode=${grub_pn}:0x8300 ${DISK0}
+	chroot /linux /usr/sbin/sgdisk --typecode=${root_pn}:0x8300 ${DISK0}
+	chroot /linux /usr/sbin/sgdisk --typecode=${afscache_pn}:0x8300 ${DISK0}
+	chroot /linux /usr/sbin/sgdisk --typecode=${swap_pn}:0x8300 ${DISK0}
+    fi
 
-#    echo "parted -s -- ${DISK0} set 1 boot on || shellout"
-#    parted -s -- ${DISK0} set 1 boot on || shellout
-#    parted -s -- ${DISK0} mkfs 1 fat32 || shellout
 
-#    echo "mkdosfs -F 32 ${DISK0}1 || shellout"
-#    /scripts/bin/mkdosfs -F 32 ${DISK0}1 || shellout
+    chroot /linux /usr/sbin/mkfs.vfat -F 32 ${DISK0}${windows_pn}
+    chroot /linux /usr/sbin/mkfs.vfat -F 32 ${DISK0}${windistro_pn}
+
+    # echo "parted -s -- ${DISK0} set 1 boot on || shellout"
+    # parted -s -- ${DISK0} set 1 boot on || shellout
+    # parted -s -- ${DISK0} mkfs 1 fat32 || shellout
+    
+    # echo "mkdosfs -F 32 ${DISK0}1 || shellout"
+    # /scripts/bin/mkdosfs -F 32 ${DISK0}1 || shellout
     # parted -s -- ${DISK0} resize 1
 }
 
 boot_disk_prepare_win10() {
-
+    
     mount_linux
     
-    chroot /linux /usr/bin/syslinux ${DISK0}1
+    chroot /linux /usr/bin/syslinux ${DISK0}${windows_pn}
 
     cp -R /a/winpe/* /c/	
 }
-
+# -*- mode:shell-script -*-
 # Unattend prepare
 
 winxp_unattend_prepare() {

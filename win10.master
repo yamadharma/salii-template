@@ -23,14 +23,7 @@
 logmsg "load hardware profile"
 check_profile
 
-## Checking if we are using grub legacy or grub2.
-## if grub2 is used the disk are set with label gpt
-
-if [ "$GRUB2" == "yes" ]; then
-    DISKLABEL=gpt
-else
-    DISKLABEL=msdos
-fi
+set_disklabel_type
 
 get_arch
 
@@ -67,44 +60,23 @@ save_param IMAGENAME_LIST "${IMAGENAME_LIST}"
 #
 disk_enumerate "sd hd vd cciss"
 
-## Begin disk creation and mounting
-# Create disk label.  This ensures that all remnants of the old label, whatever
-# type it was, are removed and that we're starting with a clean label.
-#logmsg "set_disklabel  $DISK0 $DISKLABEL"
-#set_disklabel $DISK0 $DISKLABEL
-
-#if [ "$DISKLABEL" == "msdos" ]; then
-#	logmsg "partition $DISK0 1024:ext2.128:/boot:boot 1:none 4096:swap::swap 0:xfs:/:root"
-#	partition $DISK0 1024:ext2.128:/boot:boot 4096:swap::swap 0:xfs:/:root
-#else
-#	logmsg "partition $DISK0 1024:ext2:/boot:boot 1:grub2 4096:swap::swap 0:xfs:/:root"
-#	partition $DISK0 1024:ext2:/boot:boot 1:grub2 4096:swap::swap 0:xfs:/:root
-#fi
-
-#if [ ! -z $DISK1 ]
-#then
-#	logmsg "set_disklabel  $DISK1 $DISKLABEL"
-#	set_disklabel $DISK1 $DISKLABEL
-#
-#	logmsg "partition $DISK1 0:xfs:/scratch:scratch"
-#	partition $DISK1 0:xfs:/scratch:scratch
-#fi
+set_partition_numbers
 
 logmsg "format linux partitions"
-#create_filesystem ${DISK0}1 fat32 windows
+# create_filesystem ${DISK0}${windows_pn} fat32 windows
 create_filesystem_win10
 
 logmsg "mount points"
-#create_disk_mount_file 0 / fat32 ${DISK0}1
+# create_disk_mount_file 0 / fat32 ${DISK0}1
 
 logmsg "mount_disks"
-#mount_disks
+# mount_disks
 mkdir /a
-mount ${DISK0}5 /a -t vfat -o iocharset=cp437
+mount ${DISK0}${windistro_pn} /a -t vfat -o iocharset=cp437
 mkdir /a/tmp
 
 mkdir /c
-mount ${DISK0}1 /c -t vfat -o iocharset=cp437
+mount ${DISK0}${windows_pn} /c -t vfat -o iocharset=cp437
 mkdir /c/tmp
 
 ## End disk creation and mounting

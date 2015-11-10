@@ -1,7 +1,7 @@
+# -*- mode:shell-script -*-
 # Set partition size
 set_partitioning ()
 {
-
 echo "HARDWARECLASS=" ${HARDWARECLASS}
 
 case ${HARDWARECLASS} in
@@ -58,3 +58,46 @@ esac || shellout
 
 } # END set_partitioning
 
+set_partition_numbers()
+{
+    if [ "$DISKLABEL" == "msdos" ]
+    then
+	windows_pn=1
+	boot_pn=2
+	windistro_pn=5
+	afscache_pn=6
+	swap_pn=7
+	root_pn=8
+    else # "$DISKLABEL" == "gpt"
+	if [ "$UEFI" == "yes" ]
+	then
+	    uefi_pn=1
+	    windows_pn=2
+	    boot_pn=3
+	    windistro_pn=4
+	    afscache_pn=5
+	    swap_pn=6
+	    root_pn=7
+	else
+	    windows_pn=1
+	    boot_pn=2
+	    windistro_pn=4
+	    afscache_pn=5
+	    swap_pn=6
+	    root_pn=7
+	fi
+    fi
+}
+
+set_disklabel_type()
+{
+    if [ "$DISKLABEL" == "gpt" ]; then
+	DISKLABEL=gpt
+    else
+	DISKLABEL=msdos
+    fi
+    
+    if [ "$UEFI" == "yes" ]; then
+	DISKLABEL=gpt
+    fi
+}

@@ -1,3 +1,4 @@
+# -*- mode:shell-script -*-
 grub2_install_local()
 {
     chroot_mount_system_fs

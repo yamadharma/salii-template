@@ -1,79 +1,85 @@
-mount_linux() {
+# -*- mode:shell-script -*-
 
+# Mount linux partitions
+mount_linux() {
     if [ "$LINUX_MOUNTED" == "1" ]
     then
 	echo "Linux already mounted"
     else
 	mkdir -p /linux
-	mount -t ext4 ${DISK0}8 /linux
+	mount -t ext4 ${DISK0}${root_pn} /linux
 	mount -o bind /dev /linux/dev
 	mount -o bind /sys /linux/sys
 	mount -o bind /proc /linux/proc
-
+	mount -o bind /run /linux/run
+	
 	export LINUX_MOUNTED="1"
     fi
-	
 }
 
 # Unattend prepare
 unattend_prepare_win10() {
-
-echo "sed /a/netinst/AutoUnattend.xml"
-sed -e "s:@HOSTNAME@:$HOSTNAME:g" /a/netinst/AutoUnattend.xml > /a/netinst/unattend.tmp || shellout
-cp -f /a/netinst/unattend.tmp /a/netinst/AutoUnattend.xml || shellout
-rm /a/netinst/unattend.tmp || shellout
-
-#echo "sed /a/netinst/sysprep.inf"
-#sed -e "s:@HOSTNAME@:$HOSTNAME:g" /a/netinst/sysprep.inf > /a/netinst/sysprep.tmp || shellout
-#cp -f /a/netinst/sysprep.tmp /a/netinst/sysprep.inf || shellout
-#rm /a/netinst/sysprep.tmp || shellout
-
-echo "config /netinst/AutoUnattend.xml"
-cd /a/netinst
-. /scripts/unattend-xml.sh
-
-# cp /a/netinst/sysprep.inf /a/sysprep/
-
-mv /a/unattended/* /a/
-
-cd /
-
+    
+    echo "sed /a/netinst/AutoUnattend.xml"
+    sed -e "s:@HOSTNAME@:$HOSTNAME:g" /a/netinst/AutoUnattend.xml > /a/netinst/unattend.tmp || shellout
+    cp -f /a/netinst/unattend.tmp /a/netinst/AutoUnattend.xml || shellout
+    rm /a/netinst/unattend.tmp || shellout
+    
+    echo "config /netinst/AutoUnattend.xml"
+    cd /a/netinst
+    . /scripts/unattend-xml.sh
+ 
+    mv /a/unattended/* /a/
+    
+    cd /
 }
 
 save_and_clean_mbr_win10 ()
 {
+    mount_linux	
     dd if=${DISK0} of=/a/netinst/mbr.img count=1 bs=446 || shellout
-#    dd if=/dev/zero of=${DISK0} bs=446 count=1
-#    /a/ms-sys -m ${DISK0} || shellout
+    # dd if=/dev/zero of=${DISK0} bs=446 count=1
+    chroot /linux /usr/bin/ms-sys -7 ${DISK0} || shellout
 }
 
 create_filesystem_win10(){
-
+    
     echo "Creating partition for windows on ${DISK0}:"
     
     mount_linux
 
-    chroot /linux /sbin/sfdisk --part-type ${DISK0} 1 0x0c
-    chroot /linux /sbin/sfdisk --part-type ${DISK0} 5 0x0c
+    if [ "$DISKLABEL" == "msdos" ]                                                                                                                                                           
+    then                                                                                                                                                                                     
+	chroot /linux /sbin/sfdisk --part-type ${DISK0} ${windows_pn} 0x0c
+	chroot /linux /sbin/sfdisk --part-type ${DISK0} ${windistro_pn} 0x0c
+    else # "$DISKLABEL" == "gpt"
+	chroot /linux /usr/sbin/sgdisk --typecode=${windows_pn}:0x0700 ${DISK0}
+	chroot /linux /usr/sbin/sgdisk --typecode=${windistro_pn}:0x0700 ${DISK0}
 
-    chroot /linux /usr/sbin/mkfs.vfat -F 32 ${DISK0}1
-    chroot /linux /usr/sbin/mkfs.vfat -F 32 ${DISK0}5
+	chroot /linux /usr/sbin/sgdisk --typecode=${grub_pn}:0x8300 ${DISK0}
+	chroot /linux /usr/sbin/sgdisk --typecode=${root_pn}:0x8300 ${DISK0}
+	chroot /linux /usr/sbin/sgdisk --typecode=${afscache_pn}:0x8300 ${DISK0}
+	chroot /linux /usr/sbin/sgdisk --typecode=${swap_pn}:0x8300 ${DISK0}
+    fi
 
-#    echo "parted -s -- ${DISK0} set 1 boot on || shellout"
-#    parted -s -- ${DISK0} set 1 boot on || shellout
-#    parted -s -- ${DISK0} mkfs 1 fat32 || shellout
 
-#    echo "mkdosfs -F 32 ${DISK0}1 || shellout"
-#    /scripts/bin/mkdosfs -F 32 ${DISK0}1 || shellout
+    chroot /linux /usr/sbin/mkfs.vfat -F 32 ${DISK0}${windows_pn}
+    chroot /linux /usr/sbin/mkfs.vfat -F 32 ${DISK0}${windistro_pn}
+
+    # echo "parted -s -- ${DISK0} set 1 boot on || shellout"
+    # parted -s -- ${DISK0} set 1 boot on || shellout
+    # parted -s -- ${DISK0} mkfs 1 fat32 || shellout
+    
+    # echo "mkdosfs -F 32 ${DISK0}1 || shellout"
+    # /scripts/bin/mkdosfs -F 32 ${DISK0}1 || shellout
     # parted -s -- ${DISK0} resize 1
 }
 
 boot_disk_prepare_win10() {
-
+    
     mount_linux
     
-    chroot /linux /usr/bin/syslinux ${DISK0}1
+    chroot /linux /usr/bin/syslinux ${DISK0}${windows_pn}
 
     cp -R /a/winpe/* /c/	
 }
-
