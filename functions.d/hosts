@@ -31,7 +31,7 @@ check_profile ()
 	    export HARDWARECLASS="chipset_intel net_rtl8168 video_nvidia-nonfree sound_rltk-hda scr_1280x1024_dual_nvidia-nonfree massstorage_intel5ahci"
 	    export GRUB=grub2
 	    ;;
-	dk6n[34]*)
+	dk3n[34]*|dk6n[34]*)
 	    export HARDWARECLASS="chipset_intel video_intel scr_auto"
 	    export GRUB=grub2
 	    # export DISKLABEL=gpt

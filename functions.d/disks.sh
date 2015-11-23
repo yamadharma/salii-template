@@ -262,7 +262,7 @@ disks_create_partition(){
                 PART_NUM=0
             fi
 
-            if [ $PART_NUM -eq 3 ]
+            if [ $PART_NUM -eq 2 ]
             then
                 p_comment 10 "/usr/sbin/parted -s -- ${1} mkpart extended ${LAST_SIZE}M -1"
                 /usr/sbin/parted -s -- "${1}" mkpart extended "${LAST_SIZE}M" -1
@@ -270,7 +270,7 @@ disks_create_partition(){
                 EXTENDED_LAST_SIZE=$LAST_SIZE
             fi
 
-            if [ $PART_NUM -ge 3 ]
+            if [ $PART_NUM -ge 2 ]
             then
                 case "${2}" in
                     -1|100%)
@@ -477,6 +477,6 @@ disks_part() {
         fi
     done
     
-    mkdir -p /var/cache/mounts
+    mkdir -p /var/cache
     echo "$MOUNTPOINT ${DISK}${PART_NUM} $TYPE" >> /var/cache/mounts
 }

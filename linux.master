@@ -13,6 +13,7 @@
 #set -x
 
 . /tmp/variables.txt
+. /tmp/kernel_append_parameter_variables.txt
 
 # Load functions and other variables
 . /etc/init.d/functions
@@ -57,8 +58,9 @@ disk_enumerate "sd hd vd cciss"
 
 set_partition_numbers
 
-if [ "$PARTITIONING"=="yes" ]
+if [ "x$PARTITIONING" == "xyes" ]
 then
+    echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     set_partitioning
     DISK0_SIZE=$(get_disksize $DISK0)
     # boot_size=$(( $DISK0_SIZE * $boot_ps / 100 ))
@@ -79,20 +81,35 @@ then
 	logmsg "partition $DISK0 1024:ext2.128:/boot:boot 1:none 4096:swap::swap 0:xfs:/:root"
 	# partition $DISK0 1024:ext2.128:/boot:boot 4096:swap::swap 0:xfs:/:root
 	# partition $DISK0 $windows_size:ext4::windows $boot_size:ext2.128:/boot:boot 10240:ext4::windistro $afscache_size:ext4:/var/cache/openafs:afscache $swap_size:swap::swap 0:ext4:/:root
-	partition $DISK0 $windows_size:ext4::windows $boot_size:ext4:/boot:boot 10240:ext4::windistro $afscache_size:ext4:/var/cache/openafs:afscache $swap_size:swap::swap $root_size:ext4:/:root
-	parted -s $DISK0 set $windows_pn boot on
+	# partition $DISK0 $windows_size:ext4::windows $boot_size:ext4:/boot:boot 10240:ext4::windistro $afscache_size:ext4:/var/cache/openafs:afscache $swap_size:swap::swap $root_size:ext4:/:root
+	# partition $DISK0 $windows_size:ext4::windows $boot_size:ext4:/boot:boot 10240:ext4::windistro $afscache_size:ext4:/var/cache/openafs:afscache $swap_size:swap::swap 0:ext4:/:root
+	partition $DISK0 $windows_size:ext4::windows $boot_size:ext4:/boot:boot 10240:ext4::windistro $afscache_size:ext4:/var/cache/openafs:afscache $swap_size:::none 0:ext4:/:root
 
         ##         <disk> <mountpoint> <size> <options>
 	# disks_part $DISK0 none		$windows_size	type=ext4 label=windows
-	# disks_part $DISK0 /boot		$boot_size	type=ext2 label=boot options="-I 128"
+	# disks_part $DISK0 /boot		$boot_size	type=ext4 label=boot
 	# disks_part $DISK0 none		10240		type=ext4 label=windistro
 	# disks_part $DISK0 /var/cache/openafs		$afscache_size		type=ext4 label=afscache
 	# disks_part $DISK0 swap		$swap_size   type=swap label=swap
 	# disks_part $DISK0 /		-1   		type=ext4 label=root
+
+	parted -s $DISK0 set $windows_pn boot on
+
+	# logmsg "mount points"
+	# create_disk_mount_file 0 / ext4 ${DISK0}${root_pn}
+	# create_disk_mount_file 0 /boot ext4 ${DISK0}${boot_pn}
+	# create_disk_mount_file 0 /var/cache/openafs ext4 ${DISK0}${afscache_pn}
+    
+	logmsg "swapon ${DISK0}${swap_pn}"
+	mkswap ${DISK0}${swap_pn}
+	swapon ${DISK0}${swap_pn}
+
+
     else # "$DISKLABEL" == "gpt"
-	logmsg "partition $DISK0 1024:ext2:/boot:boot 1:grub2 4096:swap::swap 0:xfs:/:root"
-	# partition $DISK0 1024:ext2:/boot:boot 1:grub2 4096:swap::swap 0:xfs:/:root
-	# partition $DISK0 $boot_size:ext2:/boot:boot 1:grub2 $windows_size:ext2::windows $swap_size:swap::swap $afscache_size:ext4:/var/cache/openafs:afscache  0:ext4:/:root
+
+	logmsg "partition $DISK0 1024:ext4:/boot:boot 1:grub2 4096:swap::swap 0:xfs:/:root"
+	# partition $DISK0 1024:ext4:/boot:boot 1:grub2 4096:swap::swap 0:xfs:/:root
+	# partition $DISK0 $boot_size:ext4:/boot:boot 1:grub2 $windows_size:ext2::windows $swap_size:swap::swap $afscache_size:ext4:/var/cache/openafs:afscache  0:ext4:/:root
 
 	if [ "$UEFI" == "yes" ]
 	then
@@ -113,10 +130,11 @@ else # "$PARTITIONING"=="no"
     
     logmsg "mount points"
     create_disk_mount_file 0 / ext4 ${DISK0}${root_pn}
-    create_disk_mount_file 0 /boot ext2 ${DISK0}${boot_pn}
+    create_disk_mount_file 0 /boot ext4 ${DISK0}${boot_pn}
     create_disk_mount_file 0 /var/cache/openafs ext4 ${DISK0}${afscache_pn}
     
     logmsg "swapon ${DISK0}${swap_pn}"
+    mkswap ${DISK0}${swap_pn}
     swapon ${DISK0}${swap_pn}
     
 fi # END of "$PARTITIONING"=="yes"
