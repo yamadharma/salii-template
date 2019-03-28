@@ -6,6 +6,10 @@ check_profile ()
 #export SFDISK_OPTIONS=
 
     case ${HOSTNAME} in
+	dk1n*|dk2n*)
+	    export HARDWARECLASS="chipset_intel net_rtl8168 video_ati sound_rltk-hda scr_1280x1024 scr_auto massstorage_intel5ahci"
+	    export GRUB=grub2
+	    ;;
 	dk1n[456]?)
 	    export HARDWARECLASS="scenic-x102 video_vesa scr_1280x1024 scr_auto"
 	    export GRUB=grub1
