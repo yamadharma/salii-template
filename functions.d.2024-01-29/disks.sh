@@ -316,11 +316,11 @@ disks_create_partition(){
 disks_format(){
     DISK=$1
     TYPE=$2
-    LABEL=$(echo $3|awk -F'=' '{print $NF}')
+    DISK_LABEL=$(echo $3|awk -F'=' '{print $NF}')
     shift 3
     OPTIONS=$(echo $@|awk -F'=' '{print $NF}')
 
-    if [ -n "${LABEL}" ]
+    if [ -n "${DISK_LABEL}" ]
     then
         LABEL="-L ${LABEL}"
     fi
@@ -348,6 +348,10 @@ disks_format(){
         xfs)
             p_comment 10 "/sbin/mkfs.xfs ${DISK} ${LABEL} ${OPTIONS}"
             /sbin/mkfs.xfs $DISK $LABEL $OPTIONS $QUIET
+        ;;
+        vfat|fat32)
+		p_comment 10 "/sbin/mkfs.vfat -n ${DISK_LABEL} ${DISK}"
+		/sbin/mkfs.vfat -n ${DISK_LABEL} ${DISK}
         ;;
         swap)
             p_comment 10 "/sbin/mkswap ${DISK} ${LABEL} ${OPTIONS}"
@@ -456,7 +460,7 @@ disks_part() {
 
     ## Check if given filesystem is supported, else show error
     case "${TYPE}" in
-        ext2|ext3|ext4|xfs|swap|none)
+        ext2|ext3|ext4|xfs|swap|vfat|fat32|none)
             disks_format "${DISK}${PART_NUM}" "${TYPE}" "label=${LABEL}" "options=${OPTIONS}"
         ;;
         *)

@@ -1,0 +1,444 @@
+# SALI:2.0
+#  ^ Required, this is used to check if the master_script is compatible
+#    It must be on the firstline of the master script
+
+# An example use of the new master_script
+#  required functions; initialize and partition
+
+
+###
+# Usage: getimage_torrent
+#
+# Fetch the image via the torrent protocol, is configured by the image_torrent option in
+# the master_script
+#
+###
+getimage_torrent(){
+
+    ## If SALI_TORRENT_STAGING_DIR is not set, give it a default value
+    if [ -z "${SALI_TORRENT_STAGING_DIR}" ]
+    then
+        SALI_TORRENT_STAGING_DIR="${SALI_TARGET}/tmp"
+    fi
+    save_variables
+
+    ## Say hello
+    p_service "Fetching image via torrent"
+    p_comment 10 "url: ${SALI_TORRENT_URL}"
+
+    ## Check if we need to download the torrent via rsync, or we can specify it as a url
+    torrent_filename=$(download_file "${SALI_TORRENT_URL}")
+
+    ## Based on the backend, use that option
+    case "${SALI_TORRENT_BACKEND}" in
+        transmission)
+            p_comment 10 "using transmission"
+            getimage_transmission $torrent_filename
+        ;;
+    esac
+
+    ## Based on the verbose mode show the extraction
+    if [ "${SALI_VERBOSE_LEVEL}" -ge 256 ]
+    then
+        tar_opts="--numeric-owner -pxvf"
+    else
+        tar_opts="--numeric-owner -pxvf"
+    fi
+
+    ## We need to remove the .torrent from the filename
+    SALI_TARBALL="$(echo $torrent_filename|sed 's/.torrent//g')"
+    SALI_TARBALL="${SALI_TORRENT_STAGING_DIR}/$(basename $SALI_TARBALL)"
+
+    ## Change our dir to where we must unpack
+    cd $SALI_TARGET
+
+    ## Unpack
+    case "${SALI_TARBALL}" in
+        *.tar.gz)
+            zcat "${SALI_TARBALL}" | tar $tar_opts -
+	    ;;
+        *.tar.bz2)
+            bzcat "${SALI_TARBALL}" | tar $tar_opts -
+        ;;
+        *.tar.xz)
+            xzcat "${SALI_TARBALL}" | tar $tar_opts -
+        ;;	
+        *.tar.zst)
+            zstdcat "${SALI_TARBALL}" | tar $tar_opts -
+        ;;	
+	*.tar)
+            tar $tar_opts "${SALI_TARBALL}"
+        ;;
+        *)
+            p_comment 10 "Unsupport file-format ${SALI_TARBALL}"
+            return 1
+        ;;
+    esac
+
+    if [ $? -ne 0 ]
+    then
+        p_comment 10 "An error has occured"
+        return 1
+    fi
+
+    p_section "Finished installing node"
+}
+
+
+
+## Intialize the SALI environment
+# required
+initialize(){
+    ## variables
+    #SALI_SSHD_KEYS="http://${SALI_IMAGESERVER}:8000/ssh_keys.tar"
+
+    ## Currently only rsync supported, also scripts are always fetched, even wen pre_installation and post_installation
+    ## have not been configured
+    SALI_SCRIPTS="rsync://${SALI_IMAGESERVER}/scripts"
+
+    ## Where can I find the image (for torrent and rsync), based on the variable PROTOCOL
+    ## rsync of bittorrent is used, variables IMAGESERVER and IMAGENAME must be available
+    ## via de linux cmd line
+    image_torrent "rsync://${SALI_IMAGESERVER}/torrents/${SALI_IMAGENAME}.tar.xz.torrent"
+    image_rsync "${SALI_IMAGESERVER}::${SALI_IMAGENAME}" options=aHS
+
+    ## Optional you can specify the root password, you must specify the actual passwd encrypted string
+    ## BUT we recommend use ssh pub keys!
+    #password root '$6$LXAd1TSI0zeMoCW$LPomOOj3ilnrxyl.xtN30kmB0uAFLZo1.C5VtxUdEzXE0MrJp4j7vFMUID/ol31W8bVNSMJYNg/B8R5mmQmB1/'
+    #ssh_authorized_key root "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC9B0Fk5Y3T6V/lmljyNIKq7SjUsq+Nl6bxV3SuXM1iJs+0LtJtaTGw5Q7JZDhG07akdUubX/v77m7k47FUczumCqKk0capYooc5z+yGVSXroj8zjJMwiCsGa/i1ejYSgSPlhBZbrOv0JDaFUcFjuuOWSz5GpR6BW8k1fcCL3qDp2amcMbjXPiul0HqK7zt9by17Yio8FkqrCGX9EB4SiFyWwP6YYbwtnwZwf4+MKPvioJUq48OUla6fEJNWGq0s3Q9hmIUdGKsfi87LOIJbSHKFUhk1cYegxGSfQkWbHcLK+61jbXuw0frNeyjWTrPpjlW0GzBUGQ1qe/jPB0kDW3n dennis@llt0012"
+    export UEFI=1
+}
+
+## The partition function
+# required
+partition(){    
+
+    # Load local finctions
+    . ${SALI_SCRIPTS_DIR}/functions
+
+
+    SALI_TARGET=/target
+    mkdir -p ${SALI_TARGET}
+
+    ## Detect all disks in the system and make them available
+    ## via variables $DISK0, $DISK1, etc. Optionally you can
+    ## specify a order in which the disks must be sorted.
+    ## For example: disks_detect hd,sd, this means that hd* disk
+    ## are sorted before sd* disks
+    disks_detect sd hd      # <order>
+
+    # Dirty hack
+    # sleep 60
+    # disks_detect sd hd      # <order>
+
+
+    ## Create partitions on specific disks
+
+    ## Syntax required options:
+    ##  disk       : disk0, disk1 or complete path to device
+    ##  mountpoint : /<path>, swap, none, raid.<id>, pv.<id>
+    ##  size       : specify size in MB (-1 means rest of disk)
+    ##
+    ## Syntax optional options:
+    ##  type=<ext2|ext3|ext4|xfs|swap>       currently supported filesystems
+    ##  flag=<bios_grub|lvm|raid>            which flag must be set on the partition
+    ##                                       when using raid.<id> or lvm.<id> the flag
+    ##                                       lvm or raid is optional!
+    ##  label=boot                           the label of the partition
+    ##  options="-I 128"                     check the man page mkfs.<fstype> for the options
+    ##  dirperms=1777                        with which permissions must the mount directory be
+    ##
+    ##         <disk> <mountpoint> <size> <options>
+    #disks_part $DISK0 /boot        512    type=ext2 label=boot
+    #disks_part $DISK0 none         1      flag=bios_grub
+    #disks_part $DISK0 swap         4096   type=swap label=swap
+
+    # if [ "$(is_yes $UEFI)" -eq 1 ]
+    # then
+    # 	uefi_pn=1
+    # 	grubbios_pn=2
+    # 	winres_pn=3
+    # 	windows_pn=4
+    # 	windistro_pn=5
+    # 	swap_pn=6
+    # 	root_pn=7
+
+    # 	boot_ps=4	# boot
+    # 	swap_ps=4	# swap
+    # 	windows_ps=35	# windows
+    # 	afscache_ps=5	# AFS cache
+    # 	root_ps=46	# root
+
+    # else
+    # 	windows_pn=1
+    # 	uefi_pn=2
+    # 	boot_pn=3
+    # 	windistro_pn=5
+    # 	afscache_pn=6
+    # 	swap_pn=7
+    # 	root_pn=8
+
+    # 	boot_ps=4	# boot
+    # 	swap_ps=4	# swap
+    # 	windows_ps=35	# windows
+    # 	afscache_ps=5	# AFS cache
+    # 	root_ps=46	# root
+
+    # fi
+
+
+
+#    DISK0_SIZE=$(disks_last_size $DISK0)
+    # DISK0_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk ' | sed 's/^.*: //g' | sed 's/MB.*$//' | sed 's/MB//' | sed 's/ //'`
+    # echo $DISK0_SIZE !!!!!!!!!!!!
+    # boot_size=$(( $DISK0_SIZE * $boot_ps / 100 ))
+    # uefi_size=512
+    # boot_size=1024
+    # windistro_size=30000
+    # swap_size=$(( $DISK0_SIZE * $swap_ps / 100 ))
+    # windows_size=$(( $DISK0_SIZE * $windows_ps / 100 ))
+    # afscache_size=$(( $DISK0_SIZE * $afscache_ps / 100 ))
+    # root_size=$(( $DISK0_SIZE * $root_ps / 100 ))
+
+## Dirty hack
+# for test installation
+#    windistro_size=200
+#    windows_size=200
+
+    
+
+
+    logmsg "Format Windows partitions"
+    # mkfs.vfat -F32 ${DISK0}${windistro_pn}
+    # mkfs.vfat -F32 ${DISK0}${windows_pn}    
+
+    mkfs.ntfs -f -L windows "${DISK0}"${windows_pn}
+    mkfs.vfat -n fat -F32 "${DISK0}"${windistro_fat_pn}
+    mkfs.ntfs -f -L windistro "${DISK0}"${windistro_ntfs_pn}
+
+
+    logmsg "swapon ${DISK0}${swap_pn}"
+    # swapon ${DISK0}${swap_pn}
+    swapon -L swap
+
+
+    # logmsg "mount points"
+    # mount -tvfat ${DISK0}${windistro_pn} ${SALI_TARGET}/
+    # mkdir ${SALI_TARGET}/tmp
+
+    # mkdir /a
+    # mount -o bind ${SALI_TARGET}/ /a
+
+    # mkdir /c
+    # mount ${DISK0}${windows_pn} /c -t vfat
+    # mkdir /c/tmp
+
+    # mkdir /linux
+    # mount -text4 ${DISK0}${root_pn} /linux
+
+}
+
+disks_mount() {
+
+    # Load local finctions
+    . ${SALI_SCRIPTS_DIR}/functions
+
+    SALI_TARGET=/target
+    mkdir -p ${SALI_TARGET}
+
+    # if [ "$(is_yes $UEFI)" -eq 1 ]
+    # then
+    # 	uefi_pn=1
+    # 	grubbios_pn=2
+    # 	winres_pn=3
+    # 	windows_pn=4
+    # 	windistro_pn=5
+    # 	swap_pn=6
+    # 	root_pn=7
+    # fi
+
+    # mkfs.vfat -F32 "${DISK0}"${windows_pn}
+    # mkfs.ntfs -f "${DISK0}"${windistro_pn}
+    
+    p_comment 0 "Mount disks"
+    if [ "$(is_yes $UEFI)" -eq 1 ]
+    then
+	## ESP
+	mkdir -p /esp
+	mount -tvfat "${DISK0}"${uefi_pn} /esp
+	# mount -tvfat -L EFI /esp
+    fi
+
+    mkdir -p /esp
+    mount -tvfat "${DISK0}"${uefi_pn} /esp
+    
+    ## Windows
+    mkdir -p /fat
+    mount -tvfat "${DISK0}"${windistro_fat_pn} /fat
+    # mount -tvfat -L windows /windows
+    ## Windistro
+    mount -tntfs-3g "${DISK0}"${windistro_ntfs_pn} ${SALI_TARGET}
+    # mount -tntfs-3g -L windistro ${SALI_TARGET}
+
+
+}
+
+getimage_torrent_(){
+    ## transmission-daemon мешает
+    killall -9 transmission-daemon
+    killall -9 transmission-daemon
+
+    SALI_TARGET=/target
+#   mkdir -p ${SALI_TARGET}/tmp
+    
+    ## If SALI_TORRENT_STAGING_DIR is not set, give it a default value
+    if [ -z "${SALI_TORRENT_STAGING_DIR}" ]
+    then
+        # SALI_TORRENT_STAGING_DIR="${SALI_TARGET}/tmp"
+        SALI_TORRENT_STAGING_DIR="${SALI_TARGET}"
+    fi
+    mkdir -p "${SALI_TORRENT_STAGING_DIR}"
+    save_variables
+
+    ## Say hello
+    p_service "Fetching image via torrent"
+    p_comment 10 "url: ${SALI_TORRENT_URL}"
+
+    ## Check if we need to download the torrent via rsync, or we can specify it as a url
+    torrent_filename=$(download_file "${SALI_TORRENT_URL}")
+
+    ## Based on the backend, use that option
+#    case "${SALI_TORRENT_BACKEND}" in
+#        transmission)
+#            p_comment 10 "using transmission"
+#            getimage_transmission $torrent_filename
+#        ;;
+#    esac
+
+    cd "${SALI_TORRENT_STAGING_DIR}"
+    ctorrent ${torrent_filename} -e 0 -I ${IPADDR} -i ${IPADDR}
+
+    ## Based on the verbose mode show the extraction
+    if [ "${SALI_VERBOSE_LEVEL}" -ge 256 ]
+    then
+        tar_opts="-pxvf"
+    else
+        tar_opts="-pxvf"
+    fi
+
+    ## We need to remove the .torrent from the filename
+    SALI_TARBALL="$(echo $torrent_filename|sed 's/.torrent//g')"
+    SALI_TARBALL="${SALI_TORRENT_STAGING_DIR}/image-$(basename $SALI_TARBALL)"
+
+    echo !!!!!!!!!! $SALI_TARBALL
+
+    ## Change our dir to where we must unpack
+    cd $SALI_TARGET
+
+    ## Unpack
+    case "${SALI_TARBALL}" in
+        *.tar.gz)
+            zcat "${SALI_TARBALL}" | tar $tar_opts -
+        ;;
+        *.tar)
+            tar $tar_opts "${SALI_TARBALL}"
+        ;;
+        *)
+            p_comment 10 "Unsupport file-format ${SALI_TARBALL}"
+            return 1
+        ;;
+    esac
+
+    if [ $? -ne 0 ]
+    then
+        p_comment 10 "An error has occured"
+        return 1
+    fi
+
+    rm ${SALI_TARBALL}    
+
+################################################################################
+#
+#   Process override directories
+#
+
+[ -z $IMAGENAME ] && IMAGENAME="win10"
+[ -z $OVERRIDES ] && OVERRIDES="dosfiles netinst $HARDWARECLASS $ROOMNAME"
+
+for OVERRIDE in $OVERRIDES
+do
+    mountpoint=${SALI_TARGET}/
+    # Use rsync
+    logmsg "rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/"
+    rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+done
+
+    p_section "Finished installing node"
+
+}
+
+
+## Simplify running post/pre scripts. Instead of specify the order number and image
+## name as script name, just specify which scripts you want to use. You can easily
+## change the order per type of install and re-use the same scripts
+
+## A function which is called before the partitioning and installation
+# optional
+#pre_installation(){
+#    run_script my_pre_script
+#}
+
+## A function which is called after fetching the image
+# optional
+post_installation(){
+
+    # Load local finctions
+    . ${SALI_SCRIPTS_DIR}/functions
+
+    SALI_TARGET=/target
+
+    ln -s ${SALI_SCRIPTS_DIR} /scripts
+
+################################################################################
+#
+#   Process override directories
+#
+
+    [ -z $IMAGENAME ] && IMAGENAME="win10-x86_64"
+    [ -z $OVERRIDES ] && OVERRIDES="unattend"
+    # [ -z $OVERRIDES ] && OVERRIDES="dosfiles netinst $HARDWARECLASS $ROOMNAME"    
+
+    for OVERRIDE in $OVERRIDES
+    do
+	mountpoint=${SALI_TARGET}/
+	# Use rsync
+	logmsg "rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/"
+	rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${IMAGENAME}.d/$OVERRIDE/* ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+    done
+
+    run_script unattend_prepare_win10
+    
+    ## Copy bootable image
+    # rsync -ai --exclude='sources/' --exclude='tmp/' --exclude='Drivers/' --exclude='Office/' ${SALI_TARGET}/* /fat
+    # mkdir -p /fat/sources
+    # cp ${SALI_TARGET}/sources/boot.wim /fat/sources/
+
+     
+
+    ## run an shell script in a chrooted environment (the functions file is NOT available in
+    ## the chroot env)
+    # run_script hostconfig
+    # run_script grub2-install
+    # boot_disk_prepare_win10
+    # save_and_clean_mbr_win10
+
+    rm -rf ${SALI_TARGET}/tmp/*
+    rm -rf /esp/EFI/Microsoft
+
+    p_section "Finished installing node"
+    
+}
+
+# Local Variables:
+# mode: shell-script
+# End:

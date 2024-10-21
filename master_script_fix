@@ -1,0 +1,207 @@
+# SALI:2.0
+#  ^ Required, this is used to check if the master_script is compatible
+#    It must be on the firstline of the master script
+
+# An example use of the new master_script
+#  required functions; initialize and partition
+
+###
+# Usage: getimage_torrent
+#
+# Fetch the image via the torrent protocol, is configured by the image_torrent option in
+# the master_script
+#
+###
+getimage_torrent_(){
+
+    ## If SALI_TORRENT_STAGING_DIR is not set, give it a default value
+    if [ -z "${SALI_TORRENT_STAGING_DIR}" ]
+    then
+        SALI_TORRENT_STAGING_DIR="${SALI_TARGET}/tmp"
+    fi
+    save_variables
+
+    ## Say hello
+    p_service "Fetching image via torrent"
+    p_comment 10 "url: ${SALI_TORRENT_URL}"
+
+    ## Check if we need to download the torrent via rsync, or we can specify it as a url
+    torrent_filename=$(download_file "${SALI_TORRENT_URL}")
+
+    ## Based on the backend, use that option
+    case "${SALI_TORRENT_BACKEND}" in
+        transmission)
+            p_comment 10 "using transmission"
+            getimage_transmission $torrent_filename
+        ;;
+    esac
+
+    ## Based on the verbose mode show the extraction
+    if [ "${SALI_VERBOSE_LEVEL}" -ge 256 ]
+    then
+        tar_opts="--numeric-owner -pxvf"
+    else
+        tar_opts="--numeric-owner -pxvf"
+    fi
+
+    ## We need to remove the .torrent from the filename
+    SALI_TARBALL="$(echo $torrent_filename|sed 's/.torrent//g')"
+    SALI_TARBALL="${SALI_TORRENT_STAGING_DIR}/$(basename $SALI_TARBALL)"
+
+    ## Change our dir to where we must unpack
+    cd $SALI_TARGET
+
+    ## Unpack
+    case "${SALI_TARBALL}" in
+        *.tar.gz)
+            zcat "${SALI_TARBALL}" | tar $tar_opts -
+	    ;;
+        *.tar.bz2)
+            bzcat "${SALI_TARBALL}" | tar $tar_opts -
+        ;;
+        *.tar.xz)
+            xzcat "${SALI_TARBALL}" | tar $tar_opts -
+        ;;	
+        *.tar.zst)
+            zstdcat "${SALI_TARBALL}" | tar $tar_opts -
+        ;;	
+	*.tar)
+            tar $tar_opts "${SALI_TARBALL}"
+        ;;
+        *)
+            p_comment 10 "Unsupport file-format ${SALI_TARBALL}"
+            return 1
+        ;;
+    esac
+
+    if [ $? -ne 0 ]
+    then
+        p_comment 10 "An error has occured"
+        return 1
+    fi
+
+    p_section "Finished installing node"
+}
+
+
+## Intialize the SALI environment
+# required
+initialize(){
+    ## variables
+    #SALI_SSHD_KEYS="http://${SALI_IMAGESERVER}:8000/ssh_keys.tar"
+
+    ## Currently only rsync supported, also scripts are always fetched, even wen pre_installation and post_installation
+    ## have not been configured
+    SALI_SCRIPTS="rsync://${SALI_IMAGESERVER}/scripts"
+
+    ## Where can I find the image (for torrent and rsync), based on the variable PROTOCOL
+    ## rsync of bittorrent is used, variables IMAGESERVER and IMAGENAME must be available
+    ## via de linux cmd line
+    image_torrent "rsync://${SALI_IMAGESERVER}/torrents/${SALI_IMAGENAME}.tar.zst.torrent"
+    image_rsync "${SALI_IMAGESERVER}::${SALI_IMAGENAME}" options=aHS
+
+    ## Optional you can specify the root password, you must specify the actual passwd encrypted string
+    ## BUT we recommend use ssh pub keys!
+    #password root '$6$LXAd1TSI0zeMoCW$LPomOOj3ilnrxyl.xtN30kmB0uAFLZo1.C5VtxUdEzXE0MrJp4j7vFMUID/ol31W8bVNSMJYNg/B8R5mmQmB1/'
+    #ssh_authorized_key root "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC9B0Fk5Y3T6V/lmljyNIKq7SjUsq+Nl6bxV3SuXM1iJs+0LtJtaTGw5Q7JZDhG07akdUubX/v77m7k47FUczumCqKk0capYooc5z+yGVSXroj8zjJMwiCsGa/i1ejYSgSPlhBZbrOv0JDaFUcFjuuOWSz5GpR6BW8k1fcCL3qDp2amcMbjXPiul0HqK7zt9by17Yio8FkqrCGX9EB4SiFyWwP6YYbwtnwZwf4+MKPvioJUq48OUla6fEJNWGq0s3Q9hmIUdGKsfi87LOIJbSHKFUhk1cYegxGSfQkWbHcLK+61jbXuw0frNeyjWTrPpjlW0GzBUGQ1qe/jPB0kDW3n dennis@llt0012"
+    export UEFI=1
+}
+
+## The partition function
+## required
+partition() {
+
+    # Load local finctions
+    . ${SALI_SCRIPTS_DIR}/functions
+
+    p_section "Nothing to partitioning"
+    
+}
+
+disks_mount() {
+
+    # Load local finctions
+    . ${SALI_SCRIPTS_DIR}/functions
+
+
+    SALI_TARGET=/target
+    mkdir -p ${SALI_TARGET}
+
+    p_comment 0 "Mount disks"
+
+    ## root
+    p_comment 0 "mount ${DISK0}${root_pn} ${SALI_TARGET}"
+    mount -text4 ${DISK0}${root_pn} ${SALI_TARGET}
+
+    # if [ "$(is_yes $UEFI)" -eq 1 ]
+    # then
+    # 	## ESP
+    # 	# mkdir -p /esp
+    # 	mkdir -p ${SALI_TARGET}/boot/efi
+    # 	mount -tvfat ${DISK0}${uefi_pn} ${SALI_TARGET}/boot/efi
+    # 	# mount -L EFI /esp
+    # fi
+
+    # mkdir -p ${SALI_TARGET}/boot/efi
+    # mount -tvfat ${DISK0}${uefi_pn} ${SALI_TARGET}/boot/efi
+
+    # p_comment 0 "swapon ${DISK0}${swap_pn}"
+    # # mkswap -L swap ${DISK0}${swap_pn}
+    # swapon -L swap
+
+}
+
+getimage_torrent(){
+
+    # Load local finctions
+    . ${SALI_SCRIPTS_DIR}/functions
+    
+    p_section "Finished installing node"
+}
+
+
+## Simplify running post/pre scripts. Instead of specify the order number and image
+## name as script name, just specify which scripts you want to use. You can easily
+## change the order per type of install and re-use the same scripts
+
+## A function which is called before the partitioning and installation
+# optional
+#pre_installation(){
+#    run_script my_pre_script
+#}
+
+## A function which is called after fetching the image
+# optional
+post_installation(){
+
+    # Load local finctions
+    . ${SALI_SCRIPTS_DIR}/functions
+
+    SALI_TARGET=/target
+    
+
+    [ -z $IMAGENAME ] && IMAGENAME="linux"
+    [ -z $OVERRIDES ] && OVERRIDES="fix"
+
+    for OVERRIDE in $OVERRIDES
+    do
+	mountpoint=${SALI_TARGET}/
+	# Use rsync
+	logmsg "rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/"
+	rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${IMAGENAME}.d/$OVERRIDE/* ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+    done
+
+    
+    ## run an shell script in a chrooted environment (the functions file is NOT available in
+    ## the chroot env)
+    # run_script hostconfig
+    # run_script grub2-install chroot=yes $DISK0
+
+    # rm -rf ${SALI_TARGET}/tmp/*
+
+    umount ${SALI_TARGET}
+}
+
+# Local Variables:
+# mode: shell-script
+# End:

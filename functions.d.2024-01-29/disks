@@ -1,0 +1,659 @@
+
+blockdev(){
+	logmsg "blockdev is depricated"
+}
+
+find_all_disks_by_dev(){
+	## 
+	# First find all disks, we are only interested the whole disk, eg: /dev/sda
+	# line to parse:
+	#  lrwxrwxrwx 1 root root  9 2010-04-05 12:40 pci-0000:02:0e.0-scsi-0:2:0:0 -> ../../sda
+	#  lrwxrwxrwx 1 root root 10 2010-04-05 12:40 pci-0000:02:0e.0-scsi-0:2:0:0-part1 -> ../../sda1
+	# 
+    # Look in all /dev/disk directories for disks
+    ##
+    disks=""                                                                                      
+    dirs="by-path by-id by-label"      
+
+    for d in $dirs:
+    do 
+        if [ -e /dev/disk/$d ]                                                                
+        then                                                                                  
+            results=$(ls -l /dev/disk/$d | grep -v part | awk '{ print $NF }' | sort -u)  
+            for r in $results                                                             
+            do                                                                            
+                ##                                                                    
+                # Is this disk already added                                          
+                ##                                                                    
+                match=$(echo $disks | grep -c $r)                                     
+                case $match in               
+                    0)                                                            
+                        disks="$disks $r"                                     
+                    ;;                                                            
+                esac                                                                  
+            done                                                                          
+         fi                                                                                    
+    done                               
+
+    if [ -z "$disks" ]                                                                        
+    then                                                                                      
+        logmsg                                                                            
+        logmsg "Can't find any disk by either path, id or label in /dev/disk"             
+        logmsg                                                                            
+        return                                                                            
+    fi 
+    
+    for d in $disks                                                                           
+    do                                                                                        
+        ##                                                                                
+        # Must we include the controller directory, eg: HP contoller                      
+        ##                                                                                
+        case $(dirname $d) in                                                             
+            ../../*)                                                                  
+                controller="$(basename $(dirname $d))/"                           
+            ;;                                                                        
+            
+            *)                                                                        
+                controller=""                                                     
+            ;;                                                                        
+        esac                                                                              
+        
+        case $d in                                                                        
+            ../*)                                                                     
+                ##                                                                
+                # Is this an valid disk                                           
+                ##                                                                
+                if [ "$(cat /proc/partitions | grep $(basename $d))" ]            
+                then                                                              
+                    echo "/dev/$controller$(basename $d)"                     
+                fi                                                                
+            ;;                                                                        
+        esac                                                                              
+    done 
+}
+
+find_all_disks_by_lsscsi(){                                                                       
+    ###
+    # parse lsscsi output, we can also filter the output by given
+    # a SKIP_PATTERN as $1, eg: SKIP the Fibre Channel disks
+    #
+    # lsscsi output:
+    #   [2:0:0:0]    disk    sas:0x5000c5001af0afe5          -       
+    #   [2:0:1:0]    disk    sas:0x5000c5001af05101          -       
+    #   _tport: no sas_address, wd=/sys/class/sas_device/host2 [2:1:0:0] disk /dev/sda 
+    #   [2:1:0:0]    disk    /dev/sda
+    #
+    # Only interested in the /dev/ entries
+    ###
+    SKIP=$1
+    
+    lsscsi --transport 2>/dev/null | while read line
+    do  
+        RESULT=$(echo $line | egrep "/dev" | awk '{ print $NF }')
+        if [ "x" == "x$SKIP" ]
+        then
+            echo $RESULT 
+        else
+            echo $RESULT  | egrep -v $SKIP
+        fi
+    done
+}
+
+sort_disks(){
+    DISKORDER=$1
+    DISKS=$2
+
+    # This variables is used to store the founded disks
+        FDISKS=""
+        # Determine what kind of a grep must be done
+        CONTROLLER=false
+
+    for disk in $DISKORDER
+    do   
+        ## Here we make sure we only have the disk name
+        DISKNAME=$(basename $disk)
+     
+        ## If the length of the diskname is 2 then it is a controller
+        ##  ie. sd or c0
+        if [ ${#DISKNAME} -eq 2 ]
+        then 
+            CONTROLLER=true
+        fi   
+    
+        ## Walk through the given diskorder 
+        for odisk in $(echo $2 | tr " " "\n" | awk '{ print length(), $1 | "sort" }' | awk '{print $2}')
+        do   
+            ## Check if we already found the current disk
+            DONE=$(echo $FDISKS | grep -w "${odisk}")
+     
+            ## If variable DONE is empty go futher, else continue the loop
+            if [ -z "${DONE}" ]
+            then 
+                ## If it is a controller the grep not on the whole word
+                if [ "x${CONTROLLER}" == "xtrue" ]
+                then 
+                    found=$(echo $odisk | grep $disk)
+                    if [ -n "${found}" ]
+                    then 
+                        FDISKS="${odisk} ${FDISKS}"
+                        echo "${odisk}"
+                    fi   
+                else 
+                    found=$(echo $odisk | grep -w $disk)
+                    if [ -n "${found}" ]
+                    then 
+                        FDISKS="${odisk} ${FDISKS}"
+                        echo "${odisk}"
+                    fi   
+                fi   
+            fi   
+        done 
+    done 
+    
+}
+
+disk_enumerate(){
+    ##  To support the following syntax's
+    #    - A=",a,b,,c" --> A="a b c"
+    #
+    ORDER=$( echo $1 | sed 's/,/ /g' | sed 's/,,*/ /g' | sed 's/^,/ /' )
+    SKIP_PATTERN=$2
+
+    ALLDISKS=$(sort_disks "${ORDER}" "$(find_all_disks_by_lsscsi $SKIP_PATTERN)")
+
+    if [ -z "${ALLDISKS}" ]
+    then
+        ALLDISKS=$(sort_disks "${ORDER}" "$(find_all_disks_by_dev)")
+    fi
+
+    NUMDISKS=-1
+
+    for disk in $ALLDISKS
+    do
+        echo "A disk found: $disk"
+        NUMDISKS=$(( $NUMDISKS + 1 ))
+        #eval "export DISK$NUMDISKS=/dev/$disk"
+        eval "export DISK$NUMDISKS=$disk"
+    done
+
+    #Let's export the amount of disks!
+    export NUMDISKS=$(( $NUMDISKS + 1 ))
+}
+
+## Sets the disklabel for a specified disk
+# Usage: set_disklabel disk label
+#   labels: bsd|dvh|gpt|loop|mac|msdos|pc98|sun
+
+set_disklabel(){
+
+	DISK=$1
+	LABEL=$2
+
+	if [ -e $DISK ]
+	then
+		case $LABEL in
+			bsd|dvh|gpt|loop|mac|msdos|pc98|sun)
+         	              	parted -s -- $DISK mklabel $LABEL
+                        ;;
+
+			*)
+				logmsg
+				logmsg "Label not supported: $LABEL"
+				shellout
+			;;
+                esac
+	else
+		logmsg
+		logmsg "Disk not found: $DISK"
+		shellout
+	fi
+}
+
+## Shows the disksize
+# Usage: get_disksize disk
+get_disksize(){
+
+	DISK=$1 
+	
+	if [ -e $DISK ]
+	then
+		echo $(parted -s $DISK unit MiB print|awk '/^Disk/ {print $3}'|sed 's/[Mm][Ii][Bb]//')
+	else
+		logmsg
+		logmsg "Disk not found!"
+		shellout
+        fi
+}
+
+## Create Filesystem
+#
+# This function will format the TARGET and put a LABEL on it 
+# if specified. The TARGET can be a partition or volume
+#
+# Usage create_filesystem <target> <fs_type> [LABEL]
+#   
+create_filesystem(){
+
+	TARGET=$1
+	FS_TYPE=$2
+	DISK_LABEL=$3
+
+	logmsg
+	logmsg "create_filesystem: $TARGET $FS_TYPE $DISK_LABEL"
+
+	case "$FS_TYPE" in
+		ext2|ext3|ext4)
+			logmsg "   mkfs.$FS_TYPE -q $TARGET"
+			mkfs.$FS_TYPE -q $TARGET || shellout
+			if [ "$DISK_LABEL" ]; then
+				logmsg "   tune2fs -L $DISK_LABEL $TARGET"
+				tune2fs -L $DISK_LABEL $TARGET || shellout
+			fi
+		;;
+		xfs)
+			logmsg "   mkfs.xfs -f -q $TARGET"
+			mkfs.xfs -f -q $TARGET || shellout
+			if [ "$LABEL" ]; then
+				logmsg "   xfs_db -x -c 'label $DISK_LABEL' $TARGET"
+				xfs_db -x -c "label $DISK_LABEL" $TARGET || shellout
+			fi
+		;;
+		swap)
+			if [ "$DISK_LABEL" ]; then
+				DISK_LABEL="-L $DISK_LABEL "
+			else
+				DISK_LABEL=""
+			fi
+			logmsg "   mkswap $SWAPLABEL$PARTITION"
+			mkswap $DISK_LABEL $TARGET || shellout
+		;;
+		ext2.128)
+			logmsg "   mkfs.ext2 -I 128 -q $TARGET"
+			mkfs.ext2 -I 128 -q $TARGET || shellout
+			if [ "$DISK_LABEL" ]; then
+				logmsg "   tune2fs -L $DISK_LABEL $TARGET"
+				tune2fs -L $DISK_LABEL $TARGET || shellout
+			fi
+		;;
+	esac
+}
+	
+
+##
+# Creates partitions
+#
+# Usage: partition disk partitionstring
+#   partition /dev/sda 1024:ext2:/boot:boot 1:grub2 4096:swap::swap 0:xfs:/:root
+#    This will create four partitions
+#
+# partitionstring == size:type:mount:label
+#  size* | specify the size of the disk in MiB, 0 means use rest/all of the disk
+#  type* | this value is required, when the disk should not be formatted specify none
+#  mount | none or nothing can specified when the disk has no mount path, ie. swap
+#  label | can be empty
+#   * == required
+#
+# Swap example no label: 4096:swap
+# Swap example label: 4096:swap::swap or 4096:swap:none:swap
+# Disk xfs no label: 4096:xfs:/var
+# Disk xfs label: 4096:xfs:/var:var
+
+partition(){
+	DISK=$1
+	DISKNAME=$(basename $1)
+	shift
+	
+	if [ ! -e $DISK ]; then
+		logmsg
+		logmsg "Disk not found, stopping"
+		shellout
+	fi
+	
+	DISKSIZE=$(get_disksize $DISK)
+	END_OF_LAST=1
+	NUMPARTITIONS=0
+	
+
+	logmsg
+	logmsg "Partition disk: $DISK $DISKSIZE"
+	logmsg
+
+	## We only support 16 partitions 
+	#
+	EXTENDED=0
+
+	if [ "$DISKLABEL" == "msdos" ]
+	then
+		if [ $# -gt 15 ]
+		then
+			logmsg
+			logmsg "Sorry we do not support more the 15 partitions for disks with msdos label"
+			logmsg
+			shellout
+		fi
+
+		if [ $# -gt 4 ]
+		then
+			EXTENDED=1
+		fi
+
+	fi
+
+	## Default partition type is: primary
+	#
+	PARTITION_TYPE="primary"
+
+	while [ $# -gt 0 ]; do
+
+		SIZE=$( echo $1 | awk -F ":" '{ print $1 }' )
+		TYPE=$( echo $1 | awk -F ":" '{ print $2 }' )
+		MOUNTPATH=$( echo $1 | awk -F ":" '{ print $3 }' ) 
+		LABEL=$( echo $1 | awk -F ":" '{ print $4 }' )
+
+		if [ ! "$SIZE" ] && [ ! "$TYPE" ]; then
+			logmsg
+			logmsg "Size and input are required, size:type"
+			logmsg
+			break
+		fi
+
+		NUMPARTITIONS=$(( $NUMPARTITIONS + 1 ))
+
+		if [ $NUMPARTITIONS -eq 3 ]
+		then
+			if [ $EXTENDED -eq 1 ]
+			then
+				START_MB=$END_OF_LAST
+				END_MB=$(( DISKSIZE - 0 ))
+
+				logmsg 
+				logmsg "Extended Partition"
+				logmsg "   parted -s -- $DISK mkpart extended ${START_MB}MiB ${END_MB}MiB"
+				logmsg
+				parted -s -- $DISK mkpart extended ${START_MB}MiB ${END_MB}MiB 
+
+				PARTITION_TYPE="logical"
+
+				## increase partitions
+				#
+				NUMPARTITIONS=$(( $NUMPARTITIONS + 2 ))
+			fi
+		fi
+
+		
+		logmsg
+		logmsg "Create partition $NUMPARTITIONS on disk $DISK"
+
+		case "$SIZE" in
+			0|-1)
+				START_MB=$END_OF_LAST
+				END_MB=$(( DISKSIZE - 0 ))
+				logmsg "   parted -s -- $DISK mkpart $PARTITION_TYPE ${START_MB}MiB ${END_MB}MiB"
+				parted -s -- $DISK mkpart $PARTITION_TYPE ${START_MB}MiB -1
+				END_OF_LAST=$END_MB
+				sleep 1
+			;;
+			*)
+				START_MB=$END_OF_LAST
+				END_MB=$(($START_MB + $SIZE))
+				logmsg "   parted -s -- $DISK mkpart $PARTITION_TYPE ${START_MB}MiB ${END_MB}MiB"
+				parted -s -- $DISK mkpart $PARTITION_TYPE ${START_MB}MiB ${END_MB}MiB
+				END_OF_LAST=$END_MB
+				sleep 1
+			;;
+		esac
+
+		PARTITION=""
+		if [ ! -e $DISK$NUMPARTITIONS ]
+		then
+			if [ -e ${DISK}p$NUMPARTITIONS ]
+			then
+				PARTITION="${DISK}p$NUMPARTITIONS"
+			fi
+		else
+			PARTITION="$DISK$NUMPARTITIONS"
+		fi
+
+		## If the value of the $LABEL is none, clear it.
+		#
+		if [ "$LABEL" == "none" ]; then
+			LABEL=""
+		fi
+
+		## There is an exception for grub2
+		#
+		case "$TYPE" in
+
+			grub2|grub_bios)
+				logmsg "   parted -s -- $DISK set $NUMPARTITIONS bios_grub on"
+				parted -s -- $DISK set $NUMPARTITIONS bios_grub on || shellout
+			;;
+
+			*) 
+				create_filesystem $PARTITION $TYPE $LABEL
+			;;
+		esac
+
+		if [ ! "$MOUNTPATH" ]
+		then
+			MOUNTPATH="none"
+		fi
+
+		##
+		# When a mountpath is specified, write the path, disk and type to a file
+		# this file shall be used during mounting and umounting the disks
+		case "$MOUNTPATH" in
+			none)
+				logmsg
+				logmsg "$PARTITION does not need a mount"
+				logmsg
+			;;
+			
+			*)
+				create_disk_mount_file $DISKNAME $MOUNTPATH $TYPE $PARTITION 
+			;;
+		
+		esac
+		shift
+
+	done  # end while
+
+	logmsg
+}
+
+##
+# Create a mount file for diskname in /tmp/mounts.<diskname>. The format is:
+#  <mount path> <FS_TYPE> <TARGET>
+#
+# create_disk_mount_file DISK MOUNTPATH FS_TYPE TARGET
+#
+create_disk_mount_file(){
+
+	if [ $# -lt 4 ]
+	then
+		echo "Usage: create_disk_mount_file DISK MOUNTPATH FS_TYPE TARGET"
+	fi
+
+	FILE=/tmp/mounts.$1
+	touch $FILE
+
+	## Normalize FS_TYPE, eg: ext2.128 --> ext2
+	#
+	FS_TYPE=$(echo $3 | awk -F. '{ print $1 }')
+	
+	## 
+	# The root filesystem must be mounted first and then the rest
+	#
+	case $2 in
+		/)
+			echo "0 /a$2 $FS_TYPE $4" >> $FILE
+		;;
+
+		*)
+			echo "1 /a$2 $FS_TYPE $4" >> $FILE
+		;;
+	esac
+}
+
+
+
+chroot_mount_system_fs(){
+
+    ## We only have to mount this one time
+    # Now we can this function multiple times
+    #
+	logmsg "Mounting /a//proc /a//sys and /a/dev"
+
+    if [ ! -d /a/proc ]
+    then
+        logmsg "mkdir -p /a/proc"
+        mkdir -p /a/proc 
+        logmsg "mount proc /a/proc -t proc -o defaults"
+        mount proc /a/proc -t proc -o defaults 
+    fi
+        
+    if [ ! -d /a/sys ]
+    then
+        logmsg "mkdir -p /a/sys"
+        mkdir -p /a/sys 
+        logmsg "mount sysfs /a/sys -t sysfs -o defaults"
+        mount sysfs /a/sys -t sysfs -o defaults 
+    fi
+        
+    if [ ! -d /a/dev ]
+    then
+        logmsg "mkdir -p /a/dev" 
+        mkdir -p /a/dev 
+        logmsg "mount /dev /a/dev -o bind"
+        mount /dev /a/dev -o bind 
+    fi
+
+	logmsg
+}
+
+chroot_umount_system_fs(){
+
+    ## We only have to umount this one time
+    # Now we can this function multiple times
+    #
+	logmsg "Umounting /a/proc /a/sys and /a/dev"
+
+    if [ -d /a/proc ]
+    then
+        logmsg "umount /a/proc"
+        umount /a/proc 
+    fi
+        
+    if [ -d /a/sys ]
+    then
+        logmsg "umount /a/sys"
+        umount /a/sys 
+    fi
+        
+    if [ -d /a/dev ]
+    then
+        logmsg "umount /a/dev" 
+        umount /a/dev 
+    fi
+    logmsg
+}
+
+## Allows you to mount disks according the information stored in /tmp/mounts.*
+#   - mount_disks --> mount all possible partitions
+#   - mount_disks /dev/sdb --> only mount partitions of disk sdb
+mount_disks(){
+
+	if [ $1 ]
+	then
+		DISK=$( basename $1)
+	else
+		DISK=*
+	fi
+
+	cat /tmp/mounts.$DISK | sort -u | while read priority path type device
+	do
+		if [ ! -e $path ]; then
+			logmsg "mkdir -p $path"
+			mkdir -p $path
+		else
+			logmsg "Directory exists!, $path"
+		fi
+
+		if [ ! "$(df | grep $device)" ]
+		then
+			sleep 2
+		        logmsg "mount -t $type $device $path"
+			mount -t $type $device $path
+			sleep 2
+		else
+			logmsg "device already mounted: $path -> $device"
+		fi
+
+	done
+
+	logmsg
+}
+
+## Allows you to umount disks according the information stored in /tmp/mounts.*
+#   - umount_disks --> umount all possible devices
+#   - umount_disks /dev/sdb --> only umount devices for disk sdb
+umount_disks(){
+
+	if [ $1 ]
+	then
+		DISK=$( basename $1)
+	else
+		DISK=*
+	fi
+
+	cat /tmp/mounts.$DISK | sort -ru | while read priority path type device
+	do
+		if [ "$(df | grep $device)" ]
+		then
+		        logmsg "umount $path"
+			umount $path
+			sleep 2
+		else
+			logmsg "device already umounted: $path -> $device"
+		fi
+
+	done
+
+	logmsg
+}
+
+grub2_install()
+{
+    
+    chroot_mount_system_fs
+
+    if [ $# -lt 1 ]
+    then
+        logmsg
+        logmsg "Must specify a disk device, eg $DISK0 or /dev/sda"
+        logmsg
+        shellout
+    fi
+    target=$1
+
+    GRUB2_INSTALL=grub-install
+    GRUB2_MKCONFIG=grub-mkconfig
+    GRUB2_CONFIG=/boot/grub/grub.cfg
+
+    ## Determine the grub2 command it is linux distribution depended
+    #
+    if [ -d /a/boot/grub2 ]
+    then
+        GRUB2_INSTALL=grub2-install
+        GRUB2_MKCONFIG=grub2-mkconfig
+        GRUB2_CONFIG=/boot/grub2/grub.cfg
+    fi
+
+    logmsg "Using GRUB2 install method! :: $target"
+
+    logmsg "chroot /a $GRUB2_INSTALL --no-floppy $target"
+    chroot /a $GRUB2_INSTALL --no-floppy $target
+
+    logmsg " /a $GRUB2_MKCONFIG -o $GRUB2_CONFIG"
+    chroot /a $GRUB2_MKCONFIG -o $GRUB2_CONFIG
+}

@@ -1,0 +1,10 @@
+#!/bin/sh
+
+SALI_TARGET=/target
+DISK0=/dev/sda
+
+grub-install ${DISK0}
+
+grub-install --boot-directory=/boot --efi-directory=/boot/efi --target=x86_64-efi --removable
+
+grub-mkconfig -o /boot/grub/grub.cfg

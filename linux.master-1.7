@@ -12,19 +12,23 @@
 #
 #set -x
 
-. /tmp/variables.txt
-. /tmp/kernel_append_parameter_variables.txt
-
-# Load functions and other variables
+## First include the functions file
 . /etc/init.d/functions
 
+. /lib/sali/deprecated.sh
+
 # Load local finctions
-. ${SCRIPTS_DIR}/functions
+. ${SALI_SCRIPTS_DIR}/functions
 
-logmsg "load hardware profile"
-check_profile
+write_local_variables
 
-set_disklabel_type
+. /tmp/variables.txt
+# . /tmp/kernel_append_parameter_variables.txt
+
+#logmsg "load hardware profile"
+#check_profile
+
+#set_disklabel_type
 
 get_arch
 
@@ -54,9 +58,14 @@ save_param IMAGENAME "${IMAGENAME}"
 
 ## Sort disk, first disk to be found are sd* disk
 #
-disk_enumerate "sd hd vd cciss"
+#disk_enumerate "sd hd vd cciss"
 
-set_partition_numbers
+DISK0=/dev/sda
+
+#set_partition_numbers
+
+PARTITIONING=yes
+DISKLABEL=msdos
 
 if [ "x$PARTITIONING" == "xyes" ]
 then
@@ -180,7 +189,7 @@ chroot_mount_system_fs
 ## Let's get the image
 # TODO: rewrite this so we can use PROTOCOL instead of using BITTORRENT yes/no
 logmsg "getimage"
-getimage
+# getimage
 
 #logmsg "getimage webc"
 #MAIN_IMAGENAME=$IMAGENAME
@@ -273,4 +282,4 @@ logmsg "Imaging completed"
 #
 ################################################################################
 
-reboot
+# reboot

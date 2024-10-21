@@ -1,103 +1,35 @@
-# -*- mode:shell-script -*-
-# Set partition size
-set_partitioning ()
-{
-echo "HARDWARECLASS=" ${HARDWARECLASS}
 
-case ${HARDWARECLASS} in
-    vectra|old+3c509)
-	hda1_ps=97
-	hda2_ps=0
-	hda3_ps=3	
-	hda5_ps=1
-	hda6_ps=1
-	hda4_ps=1
-	;;
-    acer*)
-	hda1_ps=96
-	hda2_ps=2.5
-	hda3_ps=1	
-	hda5_ps=0.5
-	hda6_ps=0.5
-	hda4_ps=0.5
-	;;
-    *)
-	hda1_ps=35	# Windows # razbivka so 2-go sectora
-	hda2_ps=12	# AFS
-	hda3_ps=48	# Extended
-	hda5_ps=44	# root
-	hda6_ps=4	# swap	
-	hda4_ps=4	# boot
-	#
-	boot_ps=4	# boot
-	swap_ps=4	# swap
-	windows_ps=35	# windows
-	afscache_ps=10	# AFS cache
-	root_ps=46	# root
-	;;
-esac || shellout 
+export UEFI=1
 
-#case ${HOSTNAME} in
-#    dk116n*)
-#	hda1_ps=30	# Windows
-#	hda2_ps=18	# Empty
-#	hda3_ps=48	# Extended
-#	hda5_ps=44	# root
-#	hda6_ps=4	# swap	
-#	hda4_ps=4	# boot
-#	;;
-#    *)
-#	hda1_ps=40	# Windows
-#	hda2_ps=8	# Empty
-	hda3_ps=48	# Extended
-#	hda5_ps=44	# root
-#	hda6_ps=4	# swap	
-#	hda4_ps=4	# boot
-#	;;
-#esac || shellout 
+# if [ "$(is_yes $UEFI)" -eq 1 ]
+# then
+uefi_pn=1
+grubbios_pn=2
+winres_pn=3
+windows_pn=4
+windistro_fat_pn=5
+windistro_ntfs_pn=6
+swap_pn=7
+root_pn=8
 
-} # END set_partitioning
-
-set_partition_numbers()
-{
-    if [ "$DISKLABEL" == "msdos" ]
-    then
-	windows_pn=1
-	boot_pn=2
-	windistro_pn=5
-	afscache_pn=6
-	swap_pn=7
-	root_pn=8
-    else # "$DISKLABEL" == "gpt"
-	if [ "$UEFI" == "yes" ]
-	then
-	    uefi_pn=1
-	    windows_pn=2
-	    boot_pn=3
-	    windistro_pn=4
-	    afscache_pn=5
-	    swap_pn=6
-	    root_pn=7
-	else
-	    windows_pn=1
-	    boot_pn=2
-	    windistro_pn=4
-	    afscache_pn=5
-	    swap_pn=6
-	    root_pn=7
-	fi
-    fi
-}
-
-set_disklabel_type()
-{
-    if [ "$DISKLABEL" == "gpt" ]; then
-	DISKLABEL=gpt
-    else
-	DISKLABEL=msdos
-    fi
+boot_ps=4	# boot
+swap_ps=4	# swap
+windows_ps=35	# windows
+afscache_ps=5	# AFS cache
+root_ps=46	# root
     
-    if [ "$UEFI" == "yes" ]; then
-	DISKLABEL=gpt
-    fi
-}
+# else
+#     windows_pn=1
+#     uefi_pn=2
+#     boot_pn=3
+#     windistro_pn=5
+#     afscache_pn=6
+#     swap_pn=7
+#     root_pn=8
+    
+#     boot_ps=4	# boot
+#     swap_ps=4	# swap
+#     windows_ps=35	# windows
+#     afscache_ps=5	# AFS cache
+#     root_ps=46	# root  
+# fi

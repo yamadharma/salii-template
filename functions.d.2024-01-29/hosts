@@ -40,16 +40,42 @@ check_profile ()
 	    export GRUB=grub2
 	    # export DISKLABEL=gpt
 	    ;;
-	dk3n*|dk6n*|dk7n*)
-	    export HARDWARECLASS="chipset_intel net_rtl8168 video_ati sound_rltk-hda scr_1280x1024 scr_auto massstorage_intel5ahci"
+	dk3n[56]*)
+	    # lenovo-fm-v530
+	    export HARDWARECLASS="chipset_intel scr_auto"
 	    export GRUB=grub2
+	    ;;
+	dk3n*|dk6n*|dk7n*)
+	    export HARDWARECLASS="chipset_intel"
+	    export GRUB=grub2
+	    ;;
+	dk4n[567]*)
+	    # lenovo-fm-v530
+	    export HARDWARECLASS="chipset_intel scr_auto"
+	    export GRUB=grub2
+	    #UEFI=yes
 	    ;;
 	dk4n*)
 	    export HARDWARECLASS="chipset_intel net_rtl8168 video_ati sound_rltk-hda scr_1920x1080 scr_auto massstorage_intel5ahci"
 	    export GRUB=grub2
 	    ;;
+	dk5n[56]*)
+	    # lenovo-fm-v530
+	    export HARDWARECLASS="chipset_intel scr_auto"
+	    export GRUB=grub2
+	    ;;
 	dk5n*)
 	    export HARDWARECLASS="p4titan+nvidia+21monitor video_nvidia net_e100 scr_1600x1200 scr_auto boot_win_first"
+	    export GRUB=grub2
+	    ;;
+	dk6n[56]*)
+	    # lenovo-fm-v530
+	    export HARDWARECLASS="chipset_intel scr_auto"
+	    export GRUB=grub2
+	    ;;
+	dk8n[5678]*)
+	    # lenovo-fm-v530
+	    export HARDWARECLASS="chipset_intel scr_auto"
 	    export GRUB=grub2
 	    ;;
 	dk116n1?)

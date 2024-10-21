@@ -11,7 +11,8 @@ getimage_aria_bm_local(){
     else
 	for i in ${IMAGENAME_LIST}
 	do
-	    getimage_aria_bm_image "${METHOD}" "${i}"
+	    logmsg "getimage_aria_bm_image ${METHOD} ${i}"
+	    getimage_aria_bm_image_dirty "${METHOD}" "${i}"
 	done
     fi
 }
@@ -47,8 +48,13 @@ getimage_aria_bm_image_dirty(){
 
     ## Get file via aria
 
+    killall -9 aria2c
+    killall -9 aria2c
+    killall -9 aria2c
+
     logmsg "/usr/bin/aria2c --enable-rpc --human-readable=false --dir $STAGING ${TORRENTS_DIR}/${tarball}.${METHOD}"
-    /usr/bin/aria2c --enable-rpc --human-readable=false --dir $STAGING "${TORRENTS_DIR}/${tarball}.${METHOD}" &> /tmp/aria.log &
+#    /usr/bin/aria2c --enable-rpc --human-readable=false --dir $STAGING "${TORRENTS_DIR}/${tarball}.${METHOD}" &> /tmp/aria.log &
+    /usr/bin/aria2c --human-readable=true --seed-time=5.0 --dir $STAGING "${TORRENTS_DIR}/${tarball}.${METHOD}" 
 
     ## Extracting the image
     logmsg "Extracting image from ${tarball}"
@@ -65,6 +71,10 @@ getimage_aria_bm_image_dirty(){
 	;;
     esac
 
+    killall -9 aria2c
+    killall -9 aria2c
+    killall -9 aria2c
+
    rm -f ${STAGING}/${tarball}
 }
 
@@ -80,6 +90,8 @@ getimage_aria_bm_image(){
     killall -9 aria2c
     killall -9 aria2c
     killall -9 aria2c
+    
+    rm -f /tmp/aria.log
 
     if [ -f "${BASENAME}.tar.gz.${METHOD}" ]
     then
@@ -120,7 +132,7 @@ getimage_aria_bm_image(){
 
     ## Get file via aria
     aria_get_file "${TORRENTS_DIR}/${tarball}.${METHOD}" $STAGING
-
+    
     ## Extracting the image
     logmsg "Extracting image from ${tarball}"
     cd /a/ || shellout

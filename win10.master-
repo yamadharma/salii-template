@@ -42,8 +42,7 @@ echo $0
 echo $IMAGENAME
 
 [ -z $IMAGENAME ] && IMAGENAME=`basename $SARA_IMAGE`
-[ -z $IMAGENAME_LIST ] && IMAGENAME_LIST="${IMAGENAME}-${ARCH} ${IMAGENAME}_unattended win-${ARCH}_unattended"
-#[ -z $IMAGENAME_LIST ] && IMAGENAME_LIST="${IMAGENAME}-${ARCH} ${IMAGENAME}-${ARCH}-part2 ${IMAGENAME}_unattended win-${ARCH}_unattended"
+[ -z $IMAGENAME_LIST ] && IMAGENAME_LIST="${IMAGENAME}-part2 ${IMAGENAME}-${ARCH} ${IMAGENAME}_unattended win-${ARCH}_unattended"
 #[ -z $IMAGENAME_LIST ] && IMAGENAME_LIST="webc ${IMAGENAME}_unattended"
 # [ -z $OVERRIDES ] && OVERRIDES=`basename $SARA_IMAGE`
 [ -z $OVERRIDES ] && OVERRIDES="dosfiles netinst $HARDWARECLASS $ROOMNAME"

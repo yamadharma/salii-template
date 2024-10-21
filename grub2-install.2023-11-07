@@ -1,0 +1,87 @@
+#!/bin/sh
+
+
+SALI_TARGET=/target
+DISK0=/dev/sda
+
+    ## We only have to mount this one time
+    # Now we can this function multiple times
+    #
+#	logmsg "Mounting /a//proc /a//sys and /a/dev"
+
+    if [ ! -d /"${SALI_TARGET}"/proc ]
+    then
+#        logmsg "mkdir -p /a/proc"
+        mkdir -p /"${SALI_TARGET}"/proc 
+#        logmsg "mount proc /a/proc -t proc -o defaults"
+
+    fi
+        mount /proc /"${SALI_TARGET}"/proc -o bind 
+        
+    if [ ! -d /"${SALI_TARGET}"/sys ]
+    then
+#        logmsg "mkdir -p /a/sys"
+        mkdir -p /"${SALI_TARGET}"/sys 
+#        logmsg "mount sysfs /a/sys -t sysfs -o defaults"
+
+    fi
+        mount /sys /"${SALI_TARGET}"/sys -o bind 
+        
+    if [ ! -d /"${SALI_TARGET}"/dev ]
+    then
+#        logmsg "mkdir -p /a/dev" 
+        mkdir -p /"${SALI_TARGET}"/dev 
+#        logmsg "mount /dev /a/dev -o bind"
+
+    fi
+
+        mount /dev /"${SALI_TARGET}"/dev -o bind 
+
+    if [ ! -d /"${SALI_TARGET}"/run ]
+    then
+#        logmsg "mkdir -p /a/run" 
+        mkdir -p /"${SALI_TARGET}"/run 
+#        logmsg "mount /dev /a/dev -o bind"
+
+    fi
+
+        mount /run /"${SALI_TARGET}"/run -o bind 
+
+#    if [ -f /a/usr/sbin/grub2-install ]
+#    then	
+#	GRUB_PREFIX=grub2
+#    else
+	GRUB_PREFIX=grub
+#    fi
+
+#    logmsg "grub2 install"
+#    chroot /a /bin/bash
+#    /usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
+#    /usr/sbin/grub2-install --no-floppy $target
+#    exit
+
+
+#    if [ "$UEFI" == "yes" ]
+#    then
+#	mount ${target}1 /boot/efi
+#	logmsg "chroot /a /usr/sbin/${GRUB_PREFIX}-install --target=x86_64-efi --removable --efi-directory=/boot/efi --boot-directory=/boot/efi/EFI --bootloader-id=grub"
+#	chroot /a /usr/sbin/${GRUB_PREFIX}-install --target=x86_64-efi --removable --efi-directory=/boot/efi --boot-directory=/boot/efi/EFI --bootloader-id=grub
+#    else
+#	logmsg "chroot /a /usr/sbin/${GRUB_PREFIX}-install --no-floppy $target"
+#	chroot /a /usr/sbin/${GRUB_PREFIX}-install --no-floppy $target
+#    fi
+
+
+#    if [ -d /a/boot/grub2 ]
+#    then
+#	logmsg "/usr/sbin/${GRUB_PREFIX}-mkconfig -o /boot/grub2/grub.cfg"
+#	chroot /a /usr/sbin/${GRUB_PREFIX}-mkconfig -o /boot/grub2/grub.cfg
+#    fi
+#
+#    if [ -d /a/boot/grub ]
+#    then
+#	logmsg "/usr/sbin/${GRUB_PREFIX}-mkconfig -o /boot/grub/grub.cfg"
+	chroot /"${SALI_TARGET}" /usr/sbin/${GRUB_PREFIX}-install --no-floppy ${DISK0}
+	chroot /"${SALI_TARGET}" /usr/sbin/${GRUB_PREFIX}-mkconfig -o /boot/grub/grub.cfg
+#    fi
+

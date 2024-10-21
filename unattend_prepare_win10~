@@ -1,0 +1,15 @@
+#!/bin/sh
+
+cd /target
+sed -i -e "s:@HOSTNAME@:$HOSTNAME:g" autounattend.xml
+
+IFS="="
+for i in ./unattend.d/*.conf
+do
+    while read var res
+    do
+	sed -i -e "s:@$var@:$res:g" autounattend.xml
+    done < $i
+done
+
+

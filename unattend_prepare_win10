@@ -1,0 +1,51 @@
+#!/bin/sh
+
+cd /target
+
+# ДК-1 - 399б
+# ДК-2 - 399а
+# ДК-3 - 299
+# ДК-4 - 298
+# ДК-5 - 297
+# ДК-6 - 296
+# ДК-7 - 295
+
+case "$HOSTNAME" in
+    dk1*)
+	NEW_HOSTNAME=$(echo $HOSTNAME | sed -r "s/.*n(.*)/ORD-W-399b-\1/g")
+	;;
+    dk2*)
+	NEW_HOSTNAME=$(echo $HOSTNAME | sed -r "s/.*n(.*)/ORD-W-399a-\1/g")
+	;;
+    dk3*)
+	NEW_HOSTNAME=$(echo $HOSTNAME | sed -r "s/.*n(.*)/ORD-W-299-\1/g")
+	;;
+    dk4*)
+	NEW_HOSTNAME=$(echo $HOSTNAME | sed -r "s/.*n(.*)/ORD-W-298-\1/g")
+	;;
+    dk5*)
+	NEW_HOSTNAME=$(echo $HOSTNAME | sed -r "s/.*n(.*)/ORD-W-297-\1/g")
+	;;
+    dk6*)
+	NEW_HOSTNAME=$(echo $HOSTNAME | sed -r "s/.*n(.*)/ORD-W-296-\1/g")
+	;;
+    dk7*)
+	NEW_HOSTNAME=$(echo $HOSTNAME | sed -r "s/.*n(.*)/ORD-W-295-\1/g")
+	;;
+    *)
+	NEW_HOSTNAME=$HOSTNAME
+	;;
+esac
+
+sed -i -e "s:@HOSTNAME@:${NEW_HOSTNAME}:g" autounattend.xml
+
+IFS="="
+for i in ./unattend.d/*.conf
+do
+    while read var res
+    do
+	sed -i -e "s:@$var@:$res:g" autounattend.xml
+    done < $i
+done
+
+

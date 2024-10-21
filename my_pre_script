@@ -1,0 +1,11 @@
+#!/bin/sh
+
+## You will still need to manually add the functions file
+## in a pre script (not available in post scripts)
+
+. /etc/init.d/functions
+
+
+echo "Hello world from ${0}"
+echo "  args $@"
+echo "  ${SALI_VERSION}"

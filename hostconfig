@@ -1,0 +1,8 @@
+#/bin/sh
+
+. /tmp/udhcpc.*
+if [ -n "$HOSTNAME" ]
+then
+echo "hostname=$HOSTNAME" > /target/etc/conf.d/hostname
+echo "$HOSTNAME" > /target/etc/hostname
+fi

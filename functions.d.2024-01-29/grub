@@ -15,25 +15,41 @@ grub2_install_local()
 
     logmsg "Using GRUB2 install method! :: $target"
 
+    if [ -f /a/usr/sbin/grub2-install ]
+    then	
+	GRUB_PREFIX=grub2
+    else
+	GRUB_PREFIX=grub
+    fi
+
     logmsg "grub2 install"
 #    chroot /a /bin/bash
 #    /usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
 #    /usr/sbin/grub2-install --no-floppy $target
 #    exit
 
-    logmsg "chroot /a /usr/sbin/grub2-install --no-floppy $target"
-    chroot /a /usr/sbin/grub2-install --no-floppy $target
+
+    if [ "$UEFI" == "yes" ]
+    then
+	mount ${target}1 /boot/efi
+	logmsg "chroot /a /usr/sbin/${GRUB_PREFIX}-install --target=x86_64-efi --removable --efi-directory=/boot/efi --boot-directory=/boot/efi/EFI --bootloader-id=grub"
+	chroot /a /usr/sbin/${GRUB_PREFIX}-install --target=x86_64-efi --removable --efi-directory=/boot/efi --boot-directory=/boot/efi/EFI --bootloader-id=grub
+    else
+	logmsg "chroot /a /usr/sbin/${GRUB_PREFIX}-install --no-floppy $target"
+	chroot /a /usr/sbin/${GRUB_PREFIX}-install --no-floppy $target
+    fi
+
 
     if [ -d /a/boot/grub2 ]
     then
-	logmsg "/usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg"
-	chroot /a /usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
+	logmsg "/usr/sbin/${GRUB_PREFIX}-mkconfig -o /boot/grub2/grub.cfg"
+	chroot /a /usr/sbin/${GRUB_PREFIX}-mkconfig -o /boot/grub2/grub.cfg
     fi
 
     if [ -d /a/boot/grub ]
     then
-	logmsg "/usr/sbin/grub2-mkconfig -o /boot/grub/grub.cfg"
-	chroot /a /usr/sbin/grub2-mkconfig -o /boot/grub/grub.cfg
+	logmsg "/usr/sbin/${GRUB_PREFIX}-mkconfig -o /boot/grub/grub.cfg"
+	chroot /a /usr/sbin/${GRUB_PREFIX}-mkconfig -o /boot/grub/grub.cfg
     fi
 
 }

@@ -25,5 +25,6 @@ sed -i -e "s:@HOSTNAME@:$HOSTNAME:g" /etc/hostname
 # AFS cache size
 # export AFS_CACHE_SIZE=$(echo "scale=0; (($DISK_SIZE2 * 910 * 1000 / 1000))" | bc)
 export AFS_CACHE_SIZE=$(echo "scale=0; (($DISK_SIZE2 * 910))" | bc)
-sed -i -e "s:@AFS_CACHE_SIZE@:$AFS_CACHE_SIZE:g" /etc/openafs/cacheinfo
+## FIXME!!! Temporary disabled
+#sed -i -e "s:@AFS_CACHE_SIZE@:$AFS_CACHE_SIZE:g" /etc/openafs/cacheinfo
 
