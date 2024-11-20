@@ -18,7 +18,7 @@ getimage_torrent(){
     ## If SALI_TORRENT_STAGING_DIR is not set, give it a default value
     if [ -z "${SALI_TORRENT_STAGING_DIR}" ]
     then
-        SALI_TORRENT_STAGING_DIR="${SALI_TARGET}/tmp"
+	SALI_TORRENT_STAGING_DIR="${SALI_TARGET}/tmp"
     fi
     save_variables
 
@@ -31,18 +31,18 @@ getimage_torrent(){
 
     ## Based on the backend, use that option
     case "${SALI_TORRENT_BACKEND}" in
-        transmission)
-            p_comment 10 "using transmission"
-            getimage_transmission $torrent_filename
-        ;;
+	transmission)
+	    p_comment 10 "using transmission"
+	    getimage_transmission $torrent_filename
+	;;
     esac
 
     ## Based on the verbose mode show the extraction
     if [ "${SALI_VERBOSE_LEVEL}" -ge 256 ]
     then
-        tar_opts="--numeric-owner -pxvf"
+	tar_opts="--numeric-owner -pxvf"
     else
-        tar_opts="--numeric-owner -pxvf"
+	tar_opts="--numeric-owner -pxvf"
     fi
 
     ## We need to remove the .torrent from the filename
@@ -54,31 +54,31 @@ getimage_torrent(){
 
     ## Unpack
     case "${SALI_TARBALL}" in
-        *.tar.gz)
-            zcat "${SALI_TARBALL}" | tar $tar_opts -
+	*.tar.gz)
+	    zcat "${SALI_TARBALL}" | tar $tar_opts -
 	    ;;
-        *.tar.bz2)
-            bzcat "${SALI_TARBALL}" | tar $tar_opts -
-        ;;
-        *.tar.xz)
-            xzcat "${SALI_TARBALL}" | tar $tar_opts -
-        ;;	
-        *.tar.zst)
-            zstdcat "${SALI_TARBALL}" | tar $tar_opts -
-        ;;	
+	*.tar.bz2)
+	    bzcat "${SALI_TARBALL}" | tar $tar_opts -
+	;;
+	*.tar.xz)
+	    xzcat "${SALI_TARBALL}" | tar $tar_opts -
+	;;
+	*.tar.zst)
+	    zstdcat "${SALI_TARBALL}" | tar $tar_opts -
+	;;
 	*.tar)
-            tar $tar_opts "${SALI_TARBALL}"
-        ;;
-        *)
-            p_comment 10 "Unsupport file-format ${SALI_TARBALL}"
-            return 1
-        ;;
+	    tar $tar_opts "${SALI_TARBALL}"
+	;;
+	*)
+	    p_comment 10 "Unsupport file-format ${SALI_TARBALL}"
+	    return 1
+	;;
     esac
 
     if [ $? -ne 0 ]
     then
-        p_comment 10 "An error has occured"
-        return 1
+	p_comment 10 "An error has occured"
+	return 1
     fi
 
     p_section "Finished installing node"
@@ -111,7 +111,7 @@ initialize(){
 
 ## The partition function
 # required
-partition(){    
+partition(){
 
     # Load local finctions
     . ${SALI_SCRIPTS_DIR}/functions
@@ -124,46 +124,48 @@ partition(){
 
     logmsg "Format Windows partitions"
     # mkfs.vfat -F32 ${DISK0}${windistro_pn}
-    # mkfs.vfat -F32 ${DISK0}${windows_pn}    
+    # mkfs.vfat -F32 ${DISK0}${windows_pn}
 
-    mkfs.ntfs -C -f -L windows "${DISK0}"${windows_pn}
+    # mkfs.ntfs -C -f -L windows "${DISK0}"${windows_pn}
+    mkfs.ext4 -F -L windows "${DISK0}"${windows_pn}
     mkfs.vfat -c -n fat -F32 "${DISK0}"${windistro_fat_pn}
     mkfs.ntfs -C -f -L windistro "${DISK0}"${windistro_ntfs_pn}
 
 
     logmsg "swapon ${DISK0}${swap_pn}"
+    mkswap -L swap ${DISK0}${swap_pn}
     swapon ${DISK0}${swap_pn}
-
 }
 
 disks_mount() {
-
     # Load local finctions
     . ${SALI_SCRIPTS_DIR}/functions
 
     SALI_TARGET=/target
     mkdir -p ${SALI_TARGET}
- 
+
     p_comment 0 "Mount disks"
     # if [ "$(is_yes $UEFI)" -eq 1 ]
     # then
-    # 	## ESP
-    # 	mkdir -p /esp
-    # 	mount -tvfat "${DISK0}"${uefi_pn} /esp
-    # 	# mount -tvfat -L EFI /esp
+    #	## ESP
+    #	mkdir -p /esp
+    #	mount -tvfat "${DISK0}"${uefi_pn} /esp
+    #	# mount -tvfat -L EFI /esp
     # fi
 
     mkdir -p /esp
     mount -tvfat "${DISK0}"${uefi_pn} /esp
-    
-    ## Windows
+
+    ## Windistro FAT
     mkdir -p /fat
     mount -tvfat "${DISK0}"${windistro_fat_pn} /fat
-    # mount -tvfat -L windows /windows
-    ## Windistro
-    mount -tntfs-3g "${DISK0}"${windistro_ntfs_pn} ${SALI_TARGET}
-    # mount -tntfs-3g -L windistro ${SALI_TARGET}
-
+    ## Windistro NTFS
+    mkdir -p /ntfs
+    mount -tntfs-3g "${DISK0}"${windistro_ntfs_pn} /ntfs
+    ## Windows
+    logmsg "mount -text4 "${DISK0}"${windows_pn} ${SALI_TARGET}/"
+    # mount -tntfs-3g "${DISK0}"${windows_pn} ${SALI_TARGET}
+    mount -text4 "${DISK0}"${windows_pn} ${SALI_TARGET}/
 }
 
 getimage_torrent_(){
@@ -173,12 +175,12 @@ getimage_torrent_(){
 
     SALI_TARGET=/target
 #   mkdir -p ${SALI_TARGET}/tmp
-    
+
     ## If SALI_TORRENT_STAGING_DIR is not set, give it a default value
     if [ -z "${SALI_TORRENT_STAGING_DIR}" ]
     then
-        # SALI_TORRENT_STAGING_DIR="${SALI_TARGET}/tmp"
-        SALI_TORRENT_STAGING_DIR="${SALI_TARGET}"
+	# SALI_TORRENT_STAGING_DIR="${SALI_TARGET}/tmp"
+	SALI_TORRENT_STAGING_DIR="${SALI_TARGET}"
     fi
     mkdir -p "${SALI_TORRENT_STAGING_DIR}"
     save_variables
@@ -204,9 +206,9 @@ getimage_torrent_(){
     ## Based on the verbose mode show the extraction
     if [ "${SALI_VERBOSE_LEVEL}" -ge 256 ]
     then
-        tar_opts="-pxvf"
+	tar_opts="-pxvf"
     else
-        tar_opts="-pxvf"
+	tar_opts="-pxvf"
     fi
 
     ## We need to remove the .torrent from the filename
@@ -220,25 +222,25 @@ getimage_torrent_(){
 
     ## Unpack
     case "${SALI_TARBALL}" in
-        *.tar.gz)
-            zcat "${SALI_TARBALL}" | tar $tar_opts -
-        ;;
-        *.tar)
-            tar $tar_opts "${SALI_TARBALL}"
-        ;;
-        *)
-            p_comment 10 "Unsupport file-format ${SALI_TARBALL}"
-            return 1
-        ;;
+	*.tar.gz)
+	    zcat "${SALI_TARBALL}" | tar $tar_opts -
+	;;
+	*.tar)
+	    tar $tar_opts "${SALI_TARBALL}"
+	;;
+	*)
+	    p_comment 10 "Unsupport file-format ${SALI_TARBALL}"
+	    return 1
+	;;
     esac
 
     if [ $? -ne 0 ]
     then
-        p_comment 10 "An error has occured"
-        return 1
+	p_comment 10 "An error has occured"
+	return 1
     fi
 
-    rm ${SALI_TARBALL}    
+    rm ${SALI_TARBALL}
 
 ################################################################################
 #
@@ -288,23 +290,25 @@ post_installation(){
 #   Process override directories
 #
 
-    [ -z $SALI_IMAGENAME ] && SALI_IMAGENAME="win10-x86_64"
+    [ -z $SALI_IMAGENAME ] && SALI_IMAGENAME="win10image"
     [ -z $OVERRIDES ] && OVERRIDES="unattend"
-    # [ -z $OVERRIDES ] && OVERRIDES="dosfiles netinst $HARDWARECLASS $ROOMNAME"    
+    # [ -z $OVERRIDES ] && OVERRIDES="dosfiles netinst $HARDWARECLASS $ROOMNAME"
 
     for OVERRIDE in $OVERRIDES
     do
-	# Use rsync
-	logmsg "rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${SALI_IMAGENAME}/$OVERRIDE/ ${SALI_TARGET}"
-	rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${SALI_IMAGENAME}/$OVERRIDE/* ${SALI_TARGET}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+	logmsg "rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${SALI_IMAGENAME}/$OVERRIDE/ ${SALI_TARGET}/"
+	rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${SALI_IMAGENAME}/${OVERRIDE}/* ${SALI_TARGET}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
     done
 
     run_script unattend_prepare_win10
-    
+
+    ## Copy to NTFS
+    rsync -ai ${SALI_TARGET}/* /ntfs
+
     ## Copy bootable image
     # rsync -ai --exclude='sources/' --exclude='tmp/' --exclude='Drivers/' --exclude='Office/' ${SALI_TARGET}/* /fat
     # mkdir -p /fat/sources
-    # cp ${SALI_TARGET}/sources/boot.wim /fat/sources/     
+    # cp ${SALI_TARGET}/sources/boot.wim /fat/sources/
 
     ## run an shell script in a chrooted environment (the functions file is NOT available in
     ## the chroot env)
@@ -313,11 +317,14 @@ post_installation(){
     # boot_disk_prepare_win10
     # save_and_clean_mbr_win10
 
-    rm -rf ${SALI_TARGET}/tmp/*
     rm -rf /esp/EFI/Microsoft
 
+    rm -rf ${SALI_TARGET}/*
+    # rm -rf ${SALI_TARGET}/tmp/*
+    umount ${SALI_TARGET}/
+    mkfs.ntfs -C -f -L windows "${DISK0}"${windows_pn}
+
     p_section "Finished installing node"
-   
 }
 
 # Local Variables:

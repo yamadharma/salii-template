@@ -1,8 +1,10 @@
 #!/bin/sh
 
+echo "grub-install --target=i386-pc $2"
+echo "grub-install --target=i386-pc $1"
 grub-install --target=i386-pc $2
+grub-install --target=i386-pc $1
 
 # grub-install --boot-directory=/boot --efi-directory=/boot/efi --target=x86_64-efi --removable
 
 grub-mkconfig -o /boot/grub/grub.cfg
-

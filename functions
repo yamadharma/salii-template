@@ -4,6 +4,7 @@ export UEFI=1
 
 # if [ "$(is_yes $UEFI)" -eq 1 ]
 # then
+
 uefi_pn=1
 grubbios_pn=2
 winres_pn=3
