@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend"
+	  xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+
+    <settings pass="windowsPE">
+	<component name="Microsoft-Windows-International-Core-WinPE"
+		   processorArchitecture="amd64"
+		   publicKeyToken="31bf3856ad364e35" language="neutral"
+		   versionScope="nonSxS">
+	    <SetupUILanguage>
+		<UILanguage>ru-RU</UILanguage>
+	    </SetupUILanguage>
+	    <InputLocale>en-US;ru-RU</InputLocale>
+	    <SystemLocale>ru-RU</SystemLocale>
+	    <UILanguage>ru-RU</UILanguage>
+	    <UserLocale>ru-RU</UserLocale>
+	</component>
+
+	<component name="Microsoft-Windows-Setup"
+		   processorArchitecture="amd64"
+		   publicKeyToken="31bf3856ad364e35" language="neutral"
+		   versionScope="nonSxS">
+
+	    <UserData>
+		<ProductKey>
+		    <Key>@ProductID@</Key>
+		</ProductKey>
+		<AcceptEula>true</AcceptEula>
+	    </UserData>
+
+	    <ImageInstall>
+		<OSImage>
+		    <InstallTo>
+			<DiskID>0</DiskID>
+			<PartitionID>4</PartitionID>
+		    </InstallTo>
+		</OSImage>
+	    </ImageInstall>
+
+	    <ComplianceCheck>
+		<DisplayReport>OnError</DisplayReport>
+	    </ComplianceCheck>
+
+	    <!-- Apply registry tweaks to Windows PE, skipping the checks in the Windows 11 setup program. This will not make it to the final install, and should do no harm with older Windows versions. -->
+            <RunAsynchronous>
+		<RunAsynchronousCommand>
+		    <Order>1</Order>
+		    <Path>reg.exe ADD HKLM\SYSTEM\Setup\LabConfig /v BypassCPUCheck /t REG_DWORD /d 1 /f</Path>
+		    <Description>Windows 11 disable CPU check</Description>
+		</RunAsynchronousCommand>
+		<RunAsynchronousCommand>
+		    <Order>2</Order>
+		    <Path>reg.exe ADD HKLM\SYSTEM\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+		    <Description>Windows 11 disable RAM check</Description>
+		</RunAsynchronousCommand>
+		<RunAsynchronousCommand>
+		    <Order>3</Order>
+		    <Path>reg.exe ADD HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+		    <Description>Windows 11 disable Secure Boot check</Description>
+		</RunAsynchronousCommand>
+		<RunAsynchronousCommand>
+		    <Order>4</Order>
+		    <Path>reg.exe ADD HKLM\SYSTEM\Setup\LabConfig /v BypassStorageCheck /t REG_DWORD /d 1 /f</Path>
+		    <Description>Windows 11 disable Storage check</Description>
+		</RunAsynchronousCommand>
+		<RunAsynchronousCommand>
+		    <Order>5</Order>
+		    <Path>reg.exe ADD HKLM\SYSTEM\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+		    <Description>Windows 11 disable TPM check</Description>
+		</RunAsynchronousCommand>
+            </RunAsynchronous>
+
+	</component>
+    </settings>
+
+    <settings pass="specialize">
+	<component name="Microsoft-Windows-Shell-Setup"
+		   processorArchitecture="amd64"
+		   publicKeyToken="31bf3856ad364e35"
+		   language="neutral"
+		   versionScope="nonSxS">
+	    <ComputerName>@HOSTNAME@</ComputerName>
+	</component>
+
+	<component name="Microsoft-Windows-UnattendedJoin"
+		   processorArchitecture="amd64"
+		   publicKeyToken="31bf3856ad364e35"
+		   language="neutral"
+		   versionScope="nonSxS"
+		   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+		   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	    <Identification>
+		<Credentials>
+		    <Domain>@Domain@</Domain>
+		    <Username>@DomainAdmin@</Username>
+		    <Password>@DomainAdminPassword@</Password>
+		</Credentials>
+		<JoinDomain>@Domain@</JoinDomain>
+		<MachineObjectOU>@OU@</MachineObjectOU>
+	    </Identification>
+	</component>
+
+
+    </settings>
+
+    <settings pass="oobeSystem">
+	<component name="Microsoft-Windows-Shell-Setup"
+		   processorArchitecture="amd64"
+		   publicKeyToken="31bf3856ad364e35" language="neutral"
+		   versionScope="nonSxS">
+
+	    <AutoLogon>
+		<Password>
+		    <Value>@AdminPassword@</Value>
+		    <PlainText>true</PlainText>
+		</Password>
+		<Enabled>true</Enabled>
+		<LogonCount>2</LogonCount>
+		<Username>Administrator</Username>
+	    </AutoLogon>
+
+	    <UserAccounts>
+		<AdministratorPassword>
+		    <Value>@AdminPassword@</Value>
+		    <PlainText>true</PlainText>
+		</AdministratorPassword>
+
+		<LocalAccounts>
+		    <LocalAccount wcm:action="add">
+			<Name>admin</Name>
+			<DisplayName>admin</DisplayName>
+			<Group>administrators;users</Group>
+			<Password>
+			    <Value>@AdminPassword@</Value>
+			    <PlainText>true</PlainText>
+			</Password>
+		    </LocalAccount>
+
+		    <LocalAccount wcm:action="add">
+			<Name>user</Name>
+			<DisplayName>user</DisplayName>
+			<Group>users</Group>
+			<Password>
+			    <Value>@UserPassword@</Value>
+			    <PlainText>true</PlainText>
+			</Password>
+		    </LocalAccount>
+		</LocalAccounts>
+
+	    </UserAccounts>
+
+	    <VisualEffects>
+		<FontSmoothing>ClearType</FontSmoothing>
+	    </VisualEffects>
+
+	    <OOBE>
+		<ProtectYourPC>3</ProtectYourPC>
+		<HideEULAPage>true</HideEULAPage>
+		<SkipUserOOBE>true</SkipUserOOBE>
+		<SkipMachineOOBE>true</SkipMachineOOBE>
+	    </OOBE>
+
+	    <FirstLogonCommands>
+		<SynchronousCommand wcm:action="add">
+		    <!-- For which OS versions do we need to do this? -->
+		    <Order>1</Order>
+		    <Description>Turn Off Network Selection pop-up</Description>
+		    <CommandLine>reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\Network\NewNetworkWindowOff"</CommandLine>
+		</SynchronousCommand>
+
+		<SynchronousCommand wcm:action="add">
+		    <Order>5</Order>
+		    <Description>Set-ExecutionPolicy Unrestricted</Description>
+		    <RequiresUserInput>false</RequiresUserInput>
+		    <CommandLine>cmd.exe /c powershell -Command "Set-ExecutionPolicy Unrestricted ;"</CommandLine>
+		</SynchronousCommand>
+
+		<SynchronousCommand wcm:action="add">
+		    <Order>10</Order>
+		    <Description>Fix Network</Description>
+		    <RequiresUserInput>false</RequiresUserInput>
+		    <CommandLine>cmd /q /c "FOR %i IN (A B C D E F G H I J K L N M O P Q R S T U V W X Y Z) DO IF EXIST %i:\fixnetwork.ps1 cmd /c powershell -file %i:\fixnetwork.ps1"</CommandLine>
+		</SynchronousCommand>
+
+		<SynchronousCommand wcm:action="add">
+		    <Order>52</Order>
+		    <RequiresUserInput>false</RequiresUserInput>
+		    <CommandLine>powershell.exe -NoProfile -Command "Disable-ComputerRestore -Drive 'C:';"</CommandLine>
+		</SynchronousCommand>
+
+		<SynchronousCommand wcm:action="add">
+		    <Order>53</Order>
+		    <RequiresUserInput>false</RequiresUserInput>
+		    <CommandLine>powershell.exe -NoProfile -Command "powercfg.exe /h off ;"</CommandLine>
+		</SynchronousCommand>
+
+		<SynchronousCommand wcm:action="add">
+		    <Order>54</Order>
+		    <RequiresUserInput>false</RequiresUserInput>
+		    <CommandLine>powershell.exe -NoProfile -Command "bcdedit.exe /set '{bootmgr}' path \EFI\refind\refind_x64.efi ;"</CommandLine>
+		</SynchronousCommand>
+
+		<SynchronousCommand wcm:action="add">
+		    <Order>200</Order>
+		    <RequiresUserInput>false</RequiresUserInput>
+		    <!-- <CommandLine>cmd /q /c "FOR %i IN (A B C D E F G H I J K L N M O P Q R S T U V W X Y Z) DO IF EXIST %i:\office-install.cmd cmd /c %i:\office-install.cmd"</CommandLine> -->
+		    <CommandLine>powershell.exe -NoProfile -Command "e:\Office\setup.exe /configure e:\Office\office.xml"</CommandLine>
+		</SynchronousCommand>
+
+		<SynchronousCommand wcm:action="add">
+		    <Order>410</Order>
+		    <Description>Install Chocolatey (alternative)</Description>
+		    <RequiresUserInput>false</RequiresUserInput>
+		    <CommandLine>cmd /q /c "FOR %i IN (A B C D E F G H I J K L N M O P Q R S T U V W X Y Z) DO IF EXIST %i:\chocolatey.ps1 cmd /c powershell -file %i:\chocolatey.ps1"</CommandLine>
+		</SynchronousCommand>
+
+		<SynchronousCommand wcm:action="add">
+		    <Order>415</Order>
+		    <Description>Install Apps via Chocolatey</Description>
+		    <RequiresUserInput>false</RequiresUserInput>
+		    <CommandLine>cmd /q /c "FOR %i IN (A B C D E F G H I J K L N M O P Q R S T U V W X Y Z) DO IF EXIST %i:\chocolatey-apps.cmd cmd /c %i:\chocolatey-apps.cmd"</CommandLine>
+		</SynchronousCommand>
+
+		<SynchronousCommand wcm:action="add">
+		    <Order>420</Order>
+		    <Description>Install Chocolatey-AutoUpdater</Description>
+		    <RequiresUserInput>false</RequiresUserInput>
+		    <CommandLine>powershell.exe -NoProfile -Command "sc.exe create Chocolatey-AutoUpdater binpath='C:\Program Files\Chocolatey.AutoUpdater\Chocolatey.AutoUpdater.exe' start=auto DisplayName=Chocolatey-AutoUpdater ; sc.exe start Chocolatey-AutoUpdater ;"</CommandLine>
+		</SynchronousCommand>
+
+		<!-- <SynchronousCommand wcm:action="add">
+		     <Order>495</Order>
+		     <CommandLine>powershell.exe -NoProfile -Command "diskpart /s e:\diskpart.txt ;"</CommandLine>
+		     </SynchronousCommand> -->
+
+		<SynchronousCommand wcm:action="add">
+		    <Order>500</Order>
+		    <CommandLine>powershell.exe -NoProfile -Command "Stop-Computer ;"</CommandLine>
+		</SynchronousCommand>
+
+	    </FirstLogonCommands>
+
+	    <TimeZone>Russian Standard Time</TimeZone>
+
+	</component>
+
+    </settings>
+
+    <settings pass="offlineServicing">
+	<component name="Microsoft-Windows-PnpCustomizationsNonWinPE"
+		   processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+	    <DriverPaths>
+		<PathAndCredentials wcm:keyValue="1">
+		    <Path>e:\Drivers</Path>
+		    <Credentials>
+		    </Credentials>
+		</PathAndCredentials>
+	    </DriverPaths>
+	</component>
+    </settings>
+
+</unattend>
+
+<!-- Local Variables: -->
+<!-- mode: web -->
+<!-- End: -->

@@ -1,0 +1,4 @@
+select disk 0
+select partition 6
+format fs=ntfs quick override
+

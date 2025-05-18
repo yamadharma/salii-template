@@ -120,7 +120,7 @@ partition(){
     SALI_TARGET=/target
     mkdir -p ${SALI_TARGET}
 
-    disks_detect sd hd      # <order>
+    disks_detect nvme sd hd      # <order>
 
     logmsg "Format Windows partitions"
     # mkfs.vfat -F32 ${DISK0}${windistro_pn}

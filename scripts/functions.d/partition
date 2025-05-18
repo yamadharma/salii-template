@@ -1,35 +1,18 @@
 
 export UEFI=1
 
-# if [ "$(is_yes $UEFI)" -eq 1 ]
-# then
 uefi_pn=1
 grubbios_pn=2
 winres_pn=3
 windows_pn=4
-windistro_fat_pn=5
-windistro_ntfs_pn=6
-swap_pn=7
-root_pn=8
+winre_pn=5
+windistro_fat_pn=6
+windistro_ntfs_pn=7
+swap_pn=8
+root_pn=9
 
 boot_ps=4	# boot
 swap_ps=4	# swap
 windows_ps=35	# windows
 afscache_ps=5	# AFS cache
 root_ps=46	# root
-    
-# else
-#     windows_pn=1
-#     uefi_pn=2
-#     boot_pn=3
-#     windistro_pn=5
-#     afscache_pn=6
-#     swap_pn=7
-#     root_pn=8
-    
-#     boot_ps=4	# boot
-#     swap_ps=4	# swap
-#     windows_ps=35	# windows
-#     afscache_ps=5	# AFS cache
-#     root_ps=46	# root  
-# fi

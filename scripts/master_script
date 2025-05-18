@@ -28,14 +28,14 @@ getimage_torrent(){
     ## Check if we need to download the torrent via rsync, or we can specify it as a url
     torrent_filename=$(download_file "${SALI_TORRENT_URL}")
 
-    ## Based on the backend, use that option
+    Based on the backend, use that option
     case "${SALI_TORRENT_BACKEND}" in
         transmission)
             p_comment 10 "using transmission"
             getimage_transmission $torrent_filename
         ;;
     esac
-
+   
     ## Based on the verbose mode show the extraction
     if [ "${SALI_VERBOSE_LEVEL}" -ge 256 ]
     then
@@ -105,17 +105,24 @@ initialize(){
     #password root '$6$LXAd1TSI0zeMoCW$LPomOOj3ilnrxyl.xtN30kmB0uAFLZo1.C5VtxUdEzXE0MrJp4j7vFMUID/ol31W8bVNSMJYNg/B8R5mmQmB1/'
     #ssh_authorized_key root "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC9B0Fk5Y3T6V/lmljyNIKq7SjUsq+Nl6bxV3SuXM1iJs+0LtJtaTGw5Q7JZDhG07akdUubX/v77m7k47FUczumCqKk0capYooc5z+yGVSXroj8zjJMwiCsGa/i1ejYSgSPlhBZbrOv0JDaFUcFjuuOWSz5GpR6BW8k1fcCL3qDp2amcMbjXPiul0HqK7zt9by17Yio8FkqrCGX9EB4SiFyWwP6YYbwtnwZwf4+MKPvioJUq48OUla6fEJNWGq0s3Q9hmIUdGKsfi87LOIJbSHKFUhk1cYegxGSfQkWbHcLK+61jbXuw0frNeyjWTrPpjlW0GzBUGQ1qe/jPB0kDW3n dennis@llt0012"
     export UEFI=1
+
+    ## Disable oom killer
+    sysctl vm.overcommit_memory=2
+    sysctl vm.oom-kill=0
+    # sysctl vm.overcommit_ratio=100
+    echo 2 > /proc/sys/vm/overcommit_memory
+
+    ## Enable zswap
+    echo 1 > /sys/module/zswap/parameters/enabled
+
+
 }
 
 ## The partition function
-## required
 partition(){
 
     # Load local finctions
     . ${SALI_SCRIPTS_DIR}/functions
-
-    echo !!!!!!!!!!!!!!!! UEFI = $UEFI
-    p_comment 0 "11111111111111111111111111 UEFI = $UEFI"
 
     SALI_TARGET=/target
     mkdir -p ${SALI_TARGET}
@@ -125,18 +132,28 @@ partition(){
     ## specify a order in which the disks must be sorted.
     ## For example: disks_detect hd,sd, this means that hd* disk
     ## are sorted before sd* disks
-    disks_detect sd hd      # <order>
+    disks_detect nvme sd hd      # <order>
 
     # Dirty hack
-    sleep 60
-    disks_detect sd hd      # <order>
+    # sleep 60
+    # disks_detect nvme sd hd      # <order>
 
+    case "$(basename $DISK0)" in
+        nvme*)
+            PART_PREFIX="p"
+            ;;
+        *)
+            PART_PREFIX=""
+            ;;
+    esac
+    
     DISK0_SIZE=`parted -s $DISK0 unit MB print | grep 'Disk ' | sed 's/^.*: //g' | sed 's/MB.*$//' | sed 's/MB//' | sed 's/ //'`
     echo $DISK0_SIZE !!!!!!!!!!!!
 
     uefi_size=1024
     winres_size=128
     boot_size=1024
+    winre_size=10000
     windistro_fat_size=10000
     windistro_ntfs_size=30000
     swap_size=$(( $DISK0_SIZE * $swap_ps / 100 ))
@@ -178,7 +195,7 @@ partition(){
 	    p_comment 10 "sgdisk -n 0:0:+32M -t 0:ef02 -c 0:grub ${DISK0}"
 	    sgdisk -n 0:0:+32M -t 0:ef02 -c 0:grub ${DISK0}
 	    sleep 60
-
+    
 	    ## 0c01 Microsoft reserved
 	    p_comment 10 "sgdisk -n 0:0:+${winres_size}MiB -t 0:0c01 ${DISK0}"
 	    sgdisk -n 0:0:+${winres_size}M -t 0:0c01 ${DISK0}
@@ -187,8 +204,16 @@ partition(){
 	    ## 0700 Microsoft basic data
 	    p_comment 10 "sgdisk -n 0:0:+${windows_size}MiB -t 0:0700 -c 0:windows ${DISK0}"
 	    sgdisk -n 0:0:+${windows_size}M -t 0:0700 -c 0:windows ${DISK0}
+
+	    ## 2700 Windows recovery partition
+    	    p_comment 10 "sgdisk -n 0:0:+10000M -t 0:2700 ${DISK0}"
+	    sgdisk -n 0:0:+${winre_size}M -t 0:2700 ${DISK0}
+
+	    ## 0700 Microsoft basic data
 	    p_comment 10 "sgdisk -n 0:0:+${windistro_fat_size}M -t 0:0700 ${DISK0}"
 	    sgdisk -n 0:0:+${windistro_fat_size}M -t 0:0700 ${DISK0}
+	    
+	    ## 0700 Microsoft basic data
 	    p_comment 10 "sgdisk -n 0:0:+${windistro_ntfs_size}M -t 0:0700 ${DISK0}"
 	    sgdisk -n 0:0:+${windistro_ntfs_size}M -t 0:0700 ${DISK0}
 	    sleep 60
@@ -209,24 +234,24 @@ partition(){
 	    partprobe ${DISK0}
 	    sleep 60
 
-	    mkfs.vfat -c -F32 -n EFI -v "${DISK0}"${uefi_pn}
+	    mkfs.vfat -c -F32 -n EFI -v ${DISK0}${PART_PREFIX}${uefi_pn}
 
 	else
 
-	##windows_pn=1
+	    ##windows_pn=1
 	    echo -e ",${windows_size}MiB,c" > /tmp/SFDISK
-	##uefi_pn=2
+	    ##uefi_pn=2
 	    echo -e ",${uefi_size}MiB,ef" >> /tmp/SFDISK
-	##boot_pn=3
+	    ##boot_pn=3
 	    echo -e ",${boot_size}MiB,L" >> /tmp/SFDISK
 	    echo -e ",,E" >> /tmp/SFDISK
-	##windistro_pn=5
+	    ##windistro_pn=5
 	    echo -e ",${windistro_size}MiB,c" >> /tmp/SFDISK
-	##afscache_pn=6
+	    ##afscache_pn=6
 	    echo -e ",${afscache_size}MiB,L" >> /tmp/SFDISK
-	## swap_pn=7
+	    ## swap_pn=7
 	    echo -e ",${swap_size}MiB,S" >> /tmp/SFDISK
-	## root_pn=8
+	    ## root_pn=8
 	    echo -e ",,L" >> /tmp/SFDISK
 
 	    echo ';' | sfdisk ${DISK0}
@@ -241,50 +266,63 @@ partition(){
 	    create_disk_mount_file 0 /var/cache/openafs ext4 ${DISK0}${afscache_pn}
 
 	fi # END UEFI
+	
+	mkfs.ntfs -C -f ${DISK0}${PART_PREFIX}${winre_pn}
+	mkfs.vfat -c -n fat -F32 ${DISK0}${PART_PREFIX}${windistro_fat_pn}
+	mkfs.ntfs -C -f -L windistro ${DISK0}${PART_PREFIX}${windistro_ntfs_pn}
+
+	mkfs.ext4 -F -L root ${DISK0}${PART_PREFIX}${root_pn}
+
+	# logmsg "swapon ${DISK0}${swap_pn}"
+	mkswap -L swap ${DISK0}${PART_PREFIX}${swap_pn}
+	# swapon ${DISK0}${swap_pn}
+
     fi # END SALI_PARTITIONING
-
-    mkfs.vfat -c -n fat -F32 "${DISK0}"${windistro_fat_pn}
-    mkfs.ntfs -C -f -L windistro "${DISK0}"${windistro_ntfs_pn}
-
-#    mkfs.ext4 -c -F -L root ${DISK0}${root_pn}
-    mkfs.ext4 -F -L root ${DISK0}${root_pn}
-
-    logmsg "swapon ${DISK0}${swap_pn}"
-    mkswap -L swap ${DISK0}${swap_pn}
-    swapon ${DISK0}${swap_pn}
 
 }
 
 disks_mount() {
 
-    # Load local finctions
+    ## Load local finctions
     . ${SALI_SCRIPTS_DIR}/functions
 
+    disks_detect nvme sd hd
+    
+    case "$(basename $DISK0)" in
+        nvme*)
+            PART_PREFIX="p"
+            ;;
+        *)
+            PART_PREFIX=""
+            ;;
+    esac
+    
     SALI_TARGET=/target
     mkdir -p ${SALI_TARGET}
 
     p_comment 0 "Mount disks"
 
     ## root
-    p_comment 0 "mount ${DISK0}${root_pn} ${SALI_TARGET}"
-    mount -text4 ${DISK0}${root_pn} ${SALI_TARGET}
+    p_comment 0 "mount ${DISK0}${PART_PREFIX}${root_pn} ${SALI_TARGET}"
+    mount -text4 ${DISK0}${PART_PREFIX}${root_pn} ${SALI_TARGET}
     # mount -L root ${SALI_TARGET}
 
-    if [ "$(is_yes $UEFI)" -eq 1 ]
-    then
-	## ESP
-	# mkdir -p /esp
-	mkdir -p ${SALI_TARGET}/boot/efi
-	mount -tvfat ${DISK0}${uefi_pn} ${SALI_TARGET}/boot/efi
-	# mount -L EFI /esp
-    fi
+    # if [ "$(is_yes $UEFI)" -eq 1 ]
+    # then
+    # 	## ESP
+    # 	# mkdir -p /esp
+    # 	mkdir -p ${SALI_TARGET}/boot/efi
+    # 	mount -tvfat ${DISK0}${PART_PREFIX}${uefi_pn} ${SALI_TARGET}/boot/efi
+    # 	# mount -L EFI /esp
+    # fi
 
     mkdir -p ${SALI_TARGET}/boot/efi
-    mount -tvfat ${DISK0}${uefi_pn} ${SALI_TARGET}/boot/efi
+    mount -tvfat ${DISK0}${PART_PREFIX}${uefi_pn} ${SALI_TARGET}/boot/efi
 
-    p_comment 0 "swapon ${DISK0}${swap_pn}"
-    mkswap -L swap ${DISK0}${swap_pn}
+    p_comment 0 "swapon ${DISK0}${PART_PREFIX}${swap_pn}"
+    mkswap -L swap ${DISK0}${PART_PREFIX}${swap_pn}
     swapon -L swap
+    swapon ${DISK0}${PART_PREFIX}${swap_pn}
 
 }
 

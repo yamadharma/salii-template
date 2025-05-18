@@ -120,50 +120,55 @@ partition(){
     SALI_TARGET=/target
     mkdir -p ${SALI_TARGET}
 
-    disks_detect sd hd      # <order>
+    disks_detect nvme sd hd      # <order>
 
+    case "$(basename $DISK0)" in
+        nvme*)
+            PART_PREFIX="p"
+            ;;
+        *)
+            PART_PREFIX=""
+            ;;
+    esac
+    
     logmsg "Format Windows partitions"
-    # mkfs.vfat -F32 ${DISK0}${windistro_pn}
-    # mkfs.vfat -F32 ${DISK0}${windows_pn}    
+    mkfs.ntfs -C -f -L windows "${DISK0}"${PART_PREFIX}${windows_pn}
+    mkfs.ntfs -C -f "${DISK0}"${PART_PREFIX}${winre_pn}
+    mkfs.vfat -c -n fat -F32 "${DISK0}"${PART_PREFIX}${windistro_fat_pn}
+    mkfs.ntfs -C -f -L windistro "${DISK0}"${PART_PREFIX}${windistro_ntfs_pn}
 
-    mkfs.ntfs -C -f -L windows "${DISK0}"${windows_pn}
-    mkfs.vfat -c -n fat -F32 "${DISK0}"${windistro_fat_pn}
-    mkfs.ntfs -C -f -L windistro "${DISK0}"${windistro_ntfs_pn}
-
-
-    logmsg "swapon ${DISK0}${swap_pn}"
-    swapon ${DISK0}${swap_pn}
-
+    logmsg "swapon ${DISK0}${PART_PREFIX}${swap_pn}"
+    swapon ${DISK0}${PART_PREFIX}${swap_pn}
 }
 
 disks_mount() {
-
     # Load local finctions
     . ${SALI_SCRIPTS_DIR}/functions
 
+    disks_detect nvme sd hd
+    
+    case "$(basename $DISK0)" in
+        nvme*)
+            PART_PREFIX="p"
+            ;;
+        *)
+            PART_PREFIX=""
+            ;;
+    esac
+    
     SALI_TARGET=/target
     mkdir -p ${SALI_TARGET}
  
     p_comment 0 "Mount disks"
-    # if [ "$(is_yes $UEFI)" -eq 1 ]
-    # then
-    # 	## ESP
-    # 	mkdir -p /esp
-    # 	mount -tvfat "${DISK0}"${uefi_pn} /esp
-    # 	# mount -tvfat -L EFI /esp
-    # fi
 
     mkdir -p /esp
-    mount -tvfat "${DISK0}"${uefi_pn} /esp
+    mount -tvfat "${DISK0}"${PART_PREFIX}${uefi_pn} /esp
     
     ## Windows
     mkdir -p /fat
-    mount -tvfat "${DISK0}"${windistro_fat_pn} /fat
-    # mount -tvfat -L windows /windows
+    mount -tvfat "${DISK0}"${PART_PREFIX}${windistro_fat_pn} /fat
     ## Windistro
-    mount -tntfs-3g "${DISK0}"${windistro_ntfs_pn} ${SALI_TARGET}
-    # mount -tntfs-3g -L windistro ${SALI_TARGET}
-
+    mount -tntfs-3g "${DISK0}"${PART_PREFIX}${windistro_ntfs_pn} ${SALI_TARGET}
 }
 
 getimage_torrent_(){
@@ -245,19 +250,18 @@ getimage_torrent_(){
 #   Process override directories
 #
 
-[ -z $IMAGENAME ] && IMAGENAME="win10"
-[ -z $OVERRIDES ] && OVERRIDES="dosfiles netinst $HARDWARECLASS $ROOMNAME"
+    [ -z $IMAGENAME ] && IMAGENAME="win10"
+    [ -z $OVERRIDES ] && OVERRIDES="unattend"
+    # [ -z $OVERRIDES ] && OVERRIDES="dosfiles netinst $HARDWARECLASS $ROOMNAME"
 
-for OVERRIDE in $OVERRIDES
-do
-    mountpoint=${SALI_TARGET}/
-    # Use rsync
-    logmsg "rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/"
-    rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${IMAGENAME}.d/$OVERRIDE/ ${mountpoint}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
-done
+    for OVERRIDE in $OVERRIDES
+    do
+	logmsg "rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${SALI_IMAGENAME}/$OVERRIDE/ ${SALI_TARGET}/"
+	rsync -av --numeric-ids ${SALI_IMAGESERVER}::overrides/${SALI_IMAGENAME}/${OVERRIDE}/* ${SALI_TARGET}/ || logmsg "Override directory $OVERRIDE doesn't seem to exist, but that may be OK."
+    done
 
-    p_section "Finished installing node"
-
+    run_script unattend_prepare_win10 
+    
 }
 
 
@@ -302,9 +306,9 @@ post_installation(){
     run_script unattend_prepare_win10
     
     ## Copy bootable image
-    # rsync -ai --exclude='sources/' --exclude='tmp/' --exclude='Drivers/' --exclude='Office/' ${SALI_TARGET}/* /fat
-    # mkdir -p /fat/sources
-    # cp ${SALI_TARGET}/sources/boot.wim /fat/sources/     
+    rsync -ai --exclude='sources/' --exclude='tmp/' --exclude='Drivers/' --exclude='Office/' ${SALI_TARGET}/* /fat
+    mkdir -p /fat/sources
+    cp ${SALI_TARGET}/sources/boot.wim /fat/sources/     
 
     ## run an shell script in a chrooted environment (the functions file is NOT available in
     ## the chroot env)

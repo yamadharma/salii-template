@@ -12,7 +12,7 @@
 # the master_script
 #
 ###
-getimage_torrent(){
+getimage_torrent_(){
 
     ## If SALI_TORRENT_STAGING_DIR is not set, give it a default value
     if [ -z "${SALI_TORRENT_STAGING_DIR}" ]
@@ -122,11 +122,11 @@ partition(){
     ## specify a order in which the disks must be sorted.
     ## For example: disks_detect hd,sd, this means that hd* disk
     ## are sorted before sd* disks
-    disks_detect sd hd      # <order>
+    disks_detect nvme sd hd      # <order>
 
     # Dirty hack
     sleep 60
-    disks_detect sd hd      # <order>
+    disks_detect nvme sd hd      # <order>
 
 
     ## Create partitions on specific disks
