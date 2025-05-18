@@ -1,0 +1,13 @@
+{
+  "name": "salii-template",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "git@github.com:yamadharma/salii-template.git",
+  "author": "Dmitry S. Kulyabov <yamadharma@gmail.com>",
+  "license": "CC-BY-4.0",
+    "config": {
+        "commitizen": {
+            "path": "cz-conventional-changelog"
+        }
+    }
+}
